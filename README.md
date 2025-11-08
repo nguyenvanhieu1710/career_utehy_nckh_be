@@ -28,12 +28,6 @@ Instead of serving as a recruiting platform for employers, this system focuses e
 
 ## 🧰 Installation & Setup
 
-### 0 Install Package
-
-```bash
-pip install -r requirements.txt
-```
-
 ### 1 Clone the Repository
 
 ```bash
@@ -52,7 +46,23 @@ python -m venv venv
 .\venv\Scripts\activate
 ```
 
-### 4 Run
+### 4 Install Package
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5 Set up environment variables
+```bash
+echo. > .env
+```
+
+### 6 Build and start containers
+```bash
+docker-compose up -d --build
+```
+
+### 7 Run
 ```bash
 python run.py
 ```
