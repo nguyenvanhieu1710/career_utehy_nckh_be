@@ -2,7 +2,6 @@ fastapi==0.118.0
 fastapi_mail==1.5.0
 joblib==1.5.2
 python-jose[cryptography]==3.3.0
-numpy==2.3.3
 opencv_contrib_python==4.11.0.86
 opencv_python==4.11.0.86
 passlib==1.7.4

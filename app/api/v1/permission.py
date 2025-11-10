@@ -1,10 +1,10 @@
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, UploadFile, Response, Query, Depends, HTTPException, status
-from app.services import blogs_service, user_service, roles_service
+from app.services import user_service, roles_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
-from app.models import blogs, perm_groups
+from app.models import perm_groups
 from app.schemas import get_schema
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
