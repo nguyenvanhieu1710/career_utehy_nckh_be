@@ -1,11 +1,12 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from .base_model import BaseModel
+from sqlalchemy.dialects.postgresql import UUID
 
 class CrawlerConfig(BaseModel):
     __tablename__ = 'crawler_configs'
     
-    source_id = Column(String(36), ForeignKey('data_sources.id'), nullable=False)
+    source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'), nullable=False)
     frequency = Column(String(20))  # 'daily' | 'hourly' | 'weekly'
     last_run_at = Column(DateTime)
     next_run_at = Column(DateTime)

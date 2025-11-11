@@ -44,7 +44,6 @@ async def create(
         payload = {
             'user_id': str(new_user.id),
             'email': str(new_user.email)
-
         }
         token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
 
@@ -67,7 +66,7 @@ async def login(
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found!")
-    if not verify_password(plain_password=password, hashed_password=user.password):
+    if not verify_password(plain_password=password, hashed_password=user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
 
     payload = {
@@ -109,7 +108,7 @@ async def get_user_by_email(email:str, db: AsyncSession) -> UserSignin:
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    del user.password
+    del user.password_hash
     del user.id
     return user
 
@@ -125,7 +124,7 @@ async def verify_password_user(email:str, password: str, db: AsyncSession) -> Us
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(plain_password=password, hashed_password=user.password):
+    if not verify_password(plain_password=password, hashed_password=user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     return True
 
@@ -136,7 +135,7 @@ async def verify_password_user(email:str, password: str, db: AsyncSession) -> Us
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(plain_password=password, hashed_password=user.password):
+    if not verify_password(plain_password=password, hashed_password=user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     return True
 
@@ -171,11 +170,11 @@ async def update_user(user_id:str, data: UserUpdate, db: AsyncSession):
     if data.username:
         user.username = data.username
     if data.password:
-        user.password = hash_password(data.password)
+        user.password_hash = hash_password(data.password)
 
     await db.commit()
     await db.refresh(user)
-    del user.password
+    del user.password_hash
     return user    
 
 def get_email_username(email: str) -> str | None:
