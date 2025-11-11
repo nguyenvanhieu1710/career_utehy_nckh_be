@@ -31,3 +31,4 @@ class Job(BaseModel):
     saved_by = relationship('JobSaved', back_populates='job')
     applications = relationship('JobApplied', back_populates='job')
     favorites = relationship('JobFavorite', back_populates='job')
+    statuses = relationship('JobStatus', back_populates='job')

@@ -7,10 +7,7 @@ class CVProfile(BaseModel):
     
     user_id = Column(String(36), ForeignKey('users.id'), nullable=False)
     title = Column(String(100), nullable=False)
-    summary = Column(Text)
-    skills = Column(JSON)
-    education = Column(JSON)
-    experience = Column(JSON)
+    summary = Column(Text)    
     projects = Column(JSON)
     certifications = Column(JSON)
     languages = Column(JSON)
