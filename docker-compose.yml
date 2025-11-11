@@ -3,7 +3,7 @@ version: '3.8'
 services:
   db:
     image: postgres:12
-    container_name: postgres_db
+    container_name: postgres_career_utehy_nckh_db
     restart: always
     environment:
       POSTGRES_USER: ${DB_USER}

@@ -1,7 +1,19 @@
 from fastapi import FastAPI
-from app.api.v1 import email, payment, permission
+from app.api.v1 import email, payment, permission, auth
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import Base, engine, SessionLocal
+from app.models.base_model import BaseModel
+from app.models.category import Category
+from app.models.company import Company
+from app.models.job import Job
+from app.models.crawler_config import CrawlerConfig
+from app.models.cv_profile import CVProfile
+from app.models.data_source import DataSource
+from app.models.job_favorite import JobFavorite
+from app.models.user import UserPerm, UserRole, Users
+from app.models.perm_groups import PermGroups, GroupPermission
+from app.models.job_status import JobStatus
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -35,6 +47,7 @@ app.add_middleware(
 app.include_router(email.router, prefix="/api/v1/email", tags=["Email"])
 app.include_router(payment.router, prefix="/api/v1/payment", tags=["Payment"])
 app.include_router(permission.router, prefix="/api/v1/permission", tags=["Permission"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 
 @app.get("/")
 def root():

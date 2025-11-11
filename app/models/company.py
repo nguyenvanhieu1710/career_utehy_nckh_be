@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from .base_model import BaseModel
+from sqlalchemy.dialects.postgresql import UUID
 
 class Company(BaseModel):
     __tablename__ = 'companies'

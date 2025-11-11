@@ -1,9 +1,8 @@
 from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from pydantic import BaseModel
 from typing import Optional
-
+from pydantic import BaseModel
 from app.core.database import Base
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
@@ -24,23 +23,16 @@ class Users(Base):
     experience = Column(String, nullable=False)
     bio = Column(String, nullable=False)
     status = Column(String, nullable=False)
+
     action_status = Column(String, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now())
 
-
-class UserInfo(Base):
-    __tablename__ = "user_info"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    phone = Column(String(50), nullable=True)
-    address = Column(String, nullable=True)
-    bio = Column(String, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-
-    user = relationship("Users", back_populates="user_info")
+    roles = relationship("UserRole", back_populates="user")
+    permissions = relationship("UserPerm", back_populates="user")
+    job_statuses = relationship("JobStatus", back_populates="user")
+    cv_profiles = relationship("CVProfile", back_populates="user")
+    favorite_jobs = relationship("JobFavorite", back_populates="user")
 
 class UserRole(Base):
     __tablename__ = "user_roles"
