@@ -29,7 +29,5 @@ class Job(BaseModel):
     # Relationships
     company = relationship('Company', back_populates='jobs')
     source = relationship('DataSource', back_populates='jobs')
-    saved_by = relationship('JobSaved', back_populates='job')
-    applications = relationship('JobApplied', back_populates='job')
     favorites = relationship('JobFavorite', back_populates='job')
     statuses = relationship('JobStatus', back_populates='job')

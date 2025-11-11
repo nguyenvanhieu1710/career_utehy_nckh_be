@@ -12,5 +12,5 @@ class JobStatus(BaseModel):
     status = Column(String(20), nullable=False)  # 'suggested', 'viewed', 'saved', 'ignored'
     
     # Relationships
-    user = relationship('User', back_populates='job_statuses')
+    user = relationship('Users', back_populates='job_statuses')
     job = relationship('Job', back_populates='statuses')

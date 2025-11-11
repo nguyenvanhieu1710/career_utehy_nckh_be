@@ -16,4 +16,3 @@ class CVProfile(BaseModel):
     
     # Relationships
     user = relationship('Users', back_populates='cv_profiles')
-    job_applications = relationship('JobApplied', back_populates='cv_profile')

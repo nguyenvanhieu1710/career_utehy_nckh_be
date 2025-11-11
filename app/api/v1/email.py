@@ -74,8 +74,8 @@ def generate_email_html(type_: str, token_or_otp: str = None):
     <div style="width:100%;background:{bg_color};padding:40px 0;font-family:Arial, sans-serif;">
         <div style="margin:0 auto;max-width:500px;background:white;border:1px solid {border_color};
                     border-radius:10px;padding:30px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.05);">
-            <h1 style="color:{main_color};margin-bottom:10px;">ALEX</h1>
-            <p style="margin-top:0;color:{accent_color};font-size:14px;">TOOLS PLATFORM</p>
+            <h1 style="color:{main_color};margin-bottom:10px;">CAREER</h1>
+            <p style="margin-top:0;color:{accent_color};font-size:14px;">Tìm kiếm việc làm phù hợp</p>
             <hr style="border:none;height:1px;background:{border_color};margin:20px 0;">
             {body}
             <hr style="border:none;height:1px;background:{border_color};margin:20px 0;">
@@ -123,7 +123,7 @@ async def send_verify_email(email: str, db: AsyncSession = Depends(get_db)):
     html = generate_email_html("verify", token)
 
     message = MessageSchema(
-        subject="Alex - Verify your email",
+        subject="CAREER - Verify your email",
         recipients=[email],
         body=html,
         subtype="html"
@@ -148,7 +148,7 @@ async def send_otp(current_password: str, db: AsyncSession = Depends(get_db), us
     html = generate_email_html("otp", otp)
 
     message = MessageSchema(
-        subject="Alex - OTP Verification",
+        subject="CAREER - OTP Verification",
         recipients=[email],
         body=html,
         subtype="html"
@@ -172,7 +172,7 @@ async def send_forgot_email(email: str, db: AsyncSession = Depends(get_db)):
     html = generate_email_html("forgot_password", token)
 
     message = MessageSchema(
-        subject="Alex - Reset your password",
+        subject="CAREER - Reset your password",
         recipients=[email],
         body=html,
         subtype="html"
