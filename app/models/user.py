@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, UniqueConstraint, Date
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from typing import Optional
@@ -13,18 +13,18 @@ class Users(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False)
     username = Column(String, index=False)
+    fullname = Column(String, nullable=False)
+    birthday = Column(Date, nullable=True)
     password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False)
-    avatar_url = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    unversity = Column(String, nullable=False)
-    major = Column(String, nullable=False)
-    graduation_year = Column(String, nullable=False)
-    experience = Column(String, nullable=False)
-    bio = Column(String, nullable=False)
-    status = Column(String, nullable=False)
+    avatar_url = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    unversity = Column(String, nullable=True)
+    major = Column(String, nullable=True)
+    graduation_year = Column(String, nullable=True)
+    experience = Column(String, nullable=True)
+    bio = Column(String, nullable=True)
 
-    action_status = Column(String, nullable=False)
+    action_status = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now())
 

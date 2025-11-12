@@ -39,6 +39,12 @@ async def user_login(data: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Wrong email or password!")
     return result
 
+
+@router.get("/verify")
+async def user_login(db: AsyncSession = Depends(get_db), user_id: str = Depends(auth.verify_token_user)):
+    result = await user_service.get_user_by_user_id_decode_token(id=user_id, db=db)
+    return result
+
 @router.get("/get-by-email/{email}")
 async def user_login(email: str, db: AsyncSession = Depends(get_db)):
     result = await user_service.get_user_by_email(email=email, db=db)
