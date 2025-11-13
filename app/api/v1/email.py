@@ -91,14 +91,15 @@ def generate_email_html(type_: str, token_or_otp: str = None):
 async def verify(token: str, db: AsyncSession = Depends(get_db)):
     payload = auth.verify_token(token)
     if not payload:
-        return {"status": "failed", "error": "Unauthorize token!"}
-    exist_user = await user_service.get_user_by_email(email=payload["email"], db=db)
+        return {"status": "failed", "message": "Unauthorize token!"}
+    exist_user = await user_service.user_is_exist(email=payload["email"], db=db)
     if exist_user:
-        return {"status": "failed", "error": "Email has exist!"}
+        return {"status": "failed", "message": "Email has exist!"}
     new_user_encode = await user_service.create(
         email=payload["email"],
         username=user_service.get_email_username(email=payload["email"]),
-        password=user_service.generate_random_password(12),
+        password=payload["password"],
+        fullname=payload["fullname"],
         db=db
     )
     return {"status": "success", "message": "Verify successffully!", "data": new_user_encode}
@@ -108,18 +109,18 @@ async def verify(token: str, db: AsyncSession = Depends(get_db)):
 async def verify_forgot(token: str, db: AsyncSession = Depends(get_db)):
     payload = auth.verify_token(token)
     if not payload:
-        return {"status": "failed", "error": "Unauthorize token!"}
+        return {"status": "failed", "message": "Unauthorize token!"}
     new_user_encode = await user_service.verify_success(email=payload["email"], db=db)
     return {"status": "success", "message": "Verify successffully!", "data": new_user_encode}
 
 
 @router.post("/send-verify-mail/{email}")
-async def send_verify_email(email: str, db: AsyncSession = Depends(get_db)):
+async def send_verify_email(email: str, password: str, fullname: str, db: AsyncSession = Depends(get_db)):
     exist_user = await user_service.user_is_exist(email=email, db=db)
     if exist_user:
-        return {"status": "failed", "error": "Email has exist!"}
+        return {"status": "failed", "message": "Email has exist!"}
 
-    token = auth.create_access_token(data={"name": "verify", "email": email}, expires_delta=timedelta(minutes=15))
+    token = auth.create_access_token(data={"name": "verify","fullname": fullname, "email": email, "password": password}, expires_delta=timedelta(minutes=15))
     html = generate_email_html("verify", token)
 
     message = MessageSchema(
@@ -134,7 +135,7 @@ async def send_verify_email(email: str, db: AsyncSession = Depends(get_db)):
         await fm.send_message(message)
         return {"status": "success"}
     except Exception as e:
-        return {"status": "failed", "error": str(e)}
+        return {"status": "failed", "message": str(e)}
 
 
 @router.post("/send-otp-email")
@@ -143,7 +144,7 @@ async def send_otp(current_password: str, db: AsyncSession = Depends(get_db), us
     otp = await otp_service.create_otp(email=email)
     correct_password = await user_service.verify_password_user(email=email, password=current_password, db=db)
     if not correct_password:
-        return {"status": "failed", "error": "Incorrect current password"}
+        return {"status": "failed", "message": "Incorrect current password"}
 
     html = generate_email_html("otp", otp)
 
@@ -159,14 +160,14 @@ async def send_otp(current_password: str, db: AsyncSession = Depends(get_db), us
         await fm.send_message(message)
         return {"status": "success"}
     except Exception as e:
-        return {"status": "failed", "error": str(e)}
+        return {"status": "failed", "message": str(e)}
 
 
 @router.post("/send-email-forgot-password/{email}")
 async def send_forgot_email(email: str, db: AsyncSession = Depends(get_db)):
     exist_user = await user_service.user_is_exist(email=email, db=db)
     if not exist_user:
-        return {"status": "failed", "error": "Email not exist!"}
+        return {"status": "failed", "message": "Email not exist!"}
 
     token = auth.create_access_token(data={"name": "verify", "email": email}, expires_delta=timedelta(minutes=15))
     html = generate_email_html("forgot_password", token)
@@ -183,4 +184,4 @@ async def send_forgot_email(email: str, db: AsyncSession = Depends(get_db)):
         await fm.send_message(message)
         return {"status": "success"}
     except Exception as e:
-        return {"status": "failed", "error": str(e)}
+        return {"status": "failed", "message": str(e)}

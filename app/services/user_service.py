@@ -18,7 +18,7 @@ import secrets
 import math
 from app.core.perms import require_permission
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -31,13 +31,16 @@ async def create(
         email: str,
         username: str, 
         password: str, 
+        fullname: str,
         db: AsyncSession):
     """
     """
     try:
         new_user = Users(email=email, 
                             username=username, 
-                            password=hash_password(password=password))
+                            password_hash=hash_password(password=password),
+                            fullname=fullname
+                            )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
@@ -51,8 +54,9 @@ async def create(
                 "token_type": "bearer",
                 "user_id": new_user.id,
                 "user_name": new_user.username,
+                "fullname": new_user.fullname,
                 "email": new_user.email}
-    except IntegrityError:
+    except IntegrityError as err:
         await db.rollback()
         return {"error": "Email already used"}
     
@@ -79,6 +83,30 @@ async def login(
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
+            "fullname": user.fullname,
+            "email": user.email}
+
+async def get_user_by_user_id_decode_token(
+        id: str,
+        db: AsyncSession):
+    """
+    """
+    result = await db.execute(select(Users).where(Users.id == id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found!")
+
+    payload = {
+        'user_id': str(user.id),
+        'email': str(user.email)
+    }
+    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+
+    return {"access_token": token, 
+            "token_type": "bearer",
+            "user_id": user.id,
+            "user_name": user.username,
+            "fullname": user.fullname,
             "email": user.email}
 
 async def verify_success(
