@@ -105,13 +105,16 @@ async def check_otp(otp: str, new_password: str, user: dict = Depends(auth.decod
     return {"status":"success","message": "Verify OTP successfully!", "data":new_user}
 
 
-@router.post("/get")
+@router.post("/get-users")
 async def get_users(
         data: get_schema.GetSchema, 
         db: AsyncSession = Depends(get_db),
-        perms: list = Depends(auth.get_current_user_permissions)
+        user_id: str = Depends(auth.verify_token_user)
     ):
     try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        print("===================")
+        print(perms)
         result = await user_service.get_all_users(user_perms=perms, filters=data, db=db)
         return result
     except Exception as e:
