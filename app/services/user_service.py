@@ -69,7 +69,7 @@ async def login(
     result = await db.execute(select(Users).where(Users.email == email))
     user = result.scalars().first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found!")
+        raise HTTPException(status_code=404, detail="Incorrect email or password")
     if not verify_password(plain_password=password, hashed_password=user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
 
@@ -185,6 +185,25 @@ async def user_add_role(data: AddRole, db: AsyncSession):
             detail=f"Database error: {str(ex)}"
         )
 
+async def update_user_by_email(email: str, data: UserUpdate, db: AsyncSession):
+    result = await db.execute(select(Users).where(Users.email == email))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    if data.username:
+        user.username = data.username
+    if data.password:
+        user.password_hash = hash_password(data.password)
+
+    await db.commit()
+    await db.refresh(user)
+    del user.password_hash
+    return user    
+
 
 async def update_user(user_id:str, data: UserUpdate, db: AsyncSession):
     result = await db.execute(select(Users).where(Users.id == user_id))
@@ -244,7 +263,7 @@ async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
     return all_perms
 
 
-
+@require_permission(["user.list"])
 async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
 

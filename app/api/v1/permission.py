@@ -18,7 +18,7 @@ async def get_db():
         yield session
 
 
-@router.post("/get-perms")
+@router.get("/get-perms")
 async def blog_get():
     return perms.get_all_permissions()
 

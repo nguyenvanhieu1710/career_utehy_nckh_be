@@ -35,8 +35,6 @@ async def user_login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await user_service.login(email=data.email,
                                        password=data.password,
                                        db=db)
-    if not result:
-        raise HTTPException(status_code=400, detail="Wrong email or password!")
     return result
 
 
@@ -60,6 +58,18 @@ async def user_login(data: UserUpdate,
     try:
         result = await user_service.update_user(user_id=user_id, data=data, db=db)
         return {'status':'success', 'data': result}
+    except HTTPException as ex:
+        return ex
+    
+
+@router.patch("/update-password")
+async def user_update(token: str, data: UserUpdate, 
+                     db: AsyncSession = Depends(get_db)):
+    try:
+        user_payload = auth.verify_token(token=token)
+        print(user_payload)
+        result = await user_service.update_user_by_email(email=user_payload["email"], data=data, db=db)
+        return {'status':'success','detail': 'Đổi mật khẩu thành công', 'data': result}
     except HTTPException as ex:
         return ex
 
@@ -96,9 +106,13 @@ async def check_otp(otp: str, new_password: str, user: dict = Depends(auth.decod
 
 
 @router.post("/get")
-async def get_users(data: get_schema.GetSchema, db: AsyncSession = Depends(get_db)):
+async def get_users(
+        data: get_schema.GetSchema, 
+        db: AsyncSession = Depends(get_db),
+        perms: list = Depends(auth.get_current_user_permissions)
+    ):
     try:
-        result = await user_service.get_all_users(filters=data, db=db)
+        result = await user_service.get_all_users(user_perms=perms, filters=data, db=db)
         return result
     except Exception as e:
         raise HTTPException(
