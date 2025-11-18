@@ -10,8 +10,17 @@ def require_permission(perms: list[str] | str):
             if user_perms is None:
                 raise PermissionError("Missing user permissions context")
 
+            # --- FULL ACCESS CHECK ---
+            # Nếu user có "*" thì cho full quyền
+            if "*" in user_perms:
+                return await func(*args, **kwargs)
+
+            # --- NORMAL PERMISSION CHECK ---
             for perm in perms:
-                if perm in user_perms or perm.split(".")[0] + ".*" in user_perms:
+                if (
+                    perm in user_perms or
+                    perm.split(".")[0] + ".*" in user_perms
+                ):
                     return await func(*args, **kwargs)
 
             raise PermissionError(f"Missing one of required permissions: {perms}")
