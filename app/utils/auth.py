@@ -6,6 +6,9 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from app.services import user_service
 load_dotenv()
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -13,6 +16,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+if not SECRET_KEY:
+    # Fail fast with clear error so developer knows to set env var
+    logger.error("SECRET_KEY environment variable is not set. Set SECRET_KEY in environment or .env file.")
+    raise RuntimeError("SECRET_KEY environment variable is not set. Please set SECRET_KEY in your environment or .env file.")
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()

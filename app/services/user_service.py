@@ -156,23 +156,12 @@ async def verify_password_user(email:str, password: str, db: AsyncSession) -> Us
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     return True
 
-
-
-async def verify_password_user(email:str, password: str, db: AsyncSession) -> UserSignin:
-    result = await db.execute(select(Users).where(Users.email == email))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(plain_password=password, hashed_password=user.password_hash):
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
-    return True
-
 @require_permission(['user.update'])
 async def user_add_role(data: AddRole, db: AsyncSession):
     try:
         new_item = UserRole(
             user_id=data.user_id,
-            group_id=data.user_id
+            group_id=data.group_id
         )
         db.add(new_item)
         await db.commit()
@@ -237,11 +226,14 @@ def generate_random_password(length: int = 12) -> str:
     return password
 
 async def get_user_roles(user_id: str, db: AsyncSession) -> list[str]:
-    stmt = select(UserRole).where(UserPerm.user_id == user_id)
-    
-    result_group_perms = await db.execute(stmt)
-    group_perms = set(result_group_perms.scalars().all())
-    return group_perms
+    stmt = (
+        select(PermGroups.id)
+        .join(UserRole, UserRole.group_id == PermGroups.id)
+        .where(UserRole.user_id == user_id)
+    )
+    result = await db.execute(stmt)
+    group_ids = [str(group_id) for group_id in result.scalars().all()]
+    return group_ids
 
 
 
@@ -268,7 +260,7 @@ async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
 
     if filters.id:
-        base_stmt = base_stmt.where(id == filters.id)
+        base_stmt = base_stmt.where(Users.id == filters.id)
 
     if filters.searchKeyword:
         keyword = f"%{filters.searchKeyword}%"

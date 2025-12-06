@@ -3,8 +3,12 @@ import uuid
 import requests
 import hmac
 import hashlib
+import os
+import logging
 from app.utils import auth, payment
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 def create(data: payment.PackPayload, user_id: str):
@@ -16,26 +20,32 @@ def create(data: payment.PackPayload, user_id: str):
         a = 134597
     elif data.pack == 'life':
         a = 790200
+    # Read sensitive config from environment variables
+    MOMO_ENDPOINT = os.getenv("MOMO_ENDPOINT", "https://test-payment.momo.vn/v2/gateway/api/create")
+    accessKey = os.getenv("MOMO_ACCESS_KEY", "F8BBA842ECF85")
+    secretKey = os.getenv("MOMO_SECRET_KEY", "K951B6PE1waDMi640xX08PD3vg6EkVlz")
+    partnerCode = os.getenv("MOMO_PARTNER_CODE", "MOMO")
+    ipnUrl = os.getenv("MOMO_IPN_URL", "https://webhook.site/b3088a6a-2d17-4f8d-a383-71389a6c600b")
+    redirect_base = os.getenv("MOMO_REDIRECT_BASE", "http://localhost:3000")
+
+    if not accessKey or not secretKey or not partnerCode:
+        raise RuntimeError("Momo configuration missing. Please set MOMO_ACCESS_KEY, MOMO_SECRET_KEY and MOMO_PARTNER_CODE environment variables")
+
     token = auth.create_access_token(data={
         "order_id": str(oid),
         "pack" : data.pack,
         "amount": a,
         "user_id": user_id
     }, expires_delta=timedelta(minutes=5))
-
-    print(token)
-    endpoint = "https://test-payment.momo.vn/v2/gateway/api/create"
-    accessKey = "F8BBA842ECF85"
-    secretKey = "K951B6PE1waDMi640xX08PD3vg6EkVlz"
-    orderInfo = "pay with MoMo"
-    partnerCode = "MOMO"
-    redirectUrl = f"http://localhost:3000/pay-success/{token}"
-    ipnUrl = "https://webhook.site/b3088a6a-2d17-4f8d-a383-71389a6c600b"
+    # Do not log token or other sensitive information
+    redirectUrl = f"{redirect_base}/pay-success/{token}"
+    endpoint = MOMO_ENDPOINT
     amount = a
     orderId = str(oid)
     requestId = str(uuid.uuid4())
     extraData = ""  # pass empty value or Encode base64 JsonString
     partnerName = "MoMo Payment"
+    orderInfo = "pay with MoMo"
     requestType = "payWithMethod"
     storeId = "Test Store"
     orderGroupId = ""
@@ -76,6 +86,12 @@ def create(data: payment.PackPayload, user_id: str):
     }
     data = json.dumps(data)
     clen = len(data)
-    response = requests.post(endpoint, data=data, headers={'Content-Type': 'application/json', 'Content-Length': str(clen)})
-    print(f'Payment with Momo: OrderID[{orderId}]')
+    try:
+        response = requests.post(endpoint, data=data, headers={'Content-Type': 'application/json', 'Content-Length': str(clen)})
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        logger.exception("Momo payment request failed for OrderID[%s]", orderId)
+        raise
+
+    logger.info("Payment with Momo: OrderID[%s] created", orderId)
     return response.json()

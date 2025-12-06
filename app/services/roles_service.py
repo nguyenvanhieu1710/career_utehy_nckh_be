@@ -99,7 +99,7 @@ async def get(filters: get_schema.GetSchema, db: AsyncSession):
     if filters.searchKeyword:
         keyword = f"%{filters.searchKeyword.strip()}%"
         stmt = stmt.where(
-            (perm_groups.PermGroups.name.ilike(keyword))
+            (perm_groups.PermGroups.name.ilike(keyword)) |
             (perm_groups.PermGroups.description.ilike(keyword))
         )
     page = filters.page if filters.page and filters.page > 0 else 1
