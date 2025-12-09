@@ -12,12 +12,14 @@ class Users(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
     username = Column(String, index=False)
     fullname = Column(String, nullable=False)
-    birthday = Column(Date, nullable=True)
-    password_hash = Column(String, nullable=False)
+    birthday = Column(Date, nullable=True)    
     avatar_url = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
     unversity = Column(String, nullable=True)
     major = Column(String, nullable=True)
     graduation_year = Column(String, nullable=True)
@@ -58,6 +60,15 @@ class UserSignin(BaseModel):
     email: str
     username: str
     password: str
+    fullname: Optional[str] = None
+    class Config:
+        orm_mode = True
+
+class UserCreateByAdmin(BaseModel):
+    email: str
+    username: str
+    password: str
+    fullname: str
     class Config:
         orm_mode = True
 
@@ -69,6 +80,11 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    fullname: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
 
 class AddPerm(BaseModel):
     user_id: str

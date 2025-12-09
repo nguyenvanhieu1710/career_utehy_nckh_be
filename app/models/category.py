@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 class Category(BaseModel):
     __tablename__ = 'categories'
     
+    avatar_url = Column(String(100), nullable=True)
     name = Column(String(100), nullable=False)
     parent_id = Column(UUID(as_uuid=True), ForeignKey('categories.id'), nullable=True)
     description = Column(Text)

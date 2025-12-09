@@ -157,7 +157,7 @@ async def verify_password_user(email:str, password: str, db: AsyncSession) -> Us
     return True
 
 @require_permission(['user.update'])
-async def user_add_role(data: AddRole, db: AsyncSession):
+async def user_add_role(user_perms: list[str], data: AddRole, db: AsyncSession):
     try:
         new_item = UserRole(
             user_id=data.user_id,
@@ -211,6 +211,36 @@ async def update_user(user_id:str, data: UserUpdate, db: AsyncSession):
     await db.commit()
     await db.refresh(user)
     del user.password_hash
+    return user
+
+
+async def change_password(user_id: str, current_password: str, new_password: str, db: AsyncSession):
+    """
+    Change password for logged-in user with current password verification
+    """
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Verify current password
+    if not verify_password(plain_password=current_password, hashed_password=user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mật khẩu hiện tại không đúng"
+        )
+    
+    # Update to new password
+    user.password_hash = hash_password(new_password)
+    await db.commit()
+    await db.refresh(user)
+    
+    # Remove sensitive data before returning
+    del user.password_hash
     return user    
 
 def get_email_username(email: str) -> str | None:
@@ -256,7 +286,7 @@ async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
 
 
 @require_permission(["user.list"])
-async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
+async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
 
     if filters.id:
@@ -286,3 +316,127 @@ async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
         "row": row,
         "data": data
     }
+
+
+@require_permission(["user.update"])
+async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdate, db: AsyncSession):
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update basic fields
+    if data.username:
+        user.username = data.username
+    if data.email:
+        user.email = data.email
+    if data.password:
+        user.password_hash = hash_password(data.password)
+    
+    # Update profile fields
+    if data.fullname:
+        user.fullname = data.fullname
+    if data.phone:
+        user.phone = data.phone
+    if data.address:
+        user.address = data.address
+    if data.birthday:
+        # Convert string to date object
+        try:
+            from datetime import datetime
+            user.birthday = datetime.strptime(data.birthday, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Expected YYYY-MM-DD"
+            )
+    if data.gender:
+        user.gender = data.gender
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@require_permission(["user.delete"])
+async def delete_user(user_perms: list[str], user_id: str, db: AsyncSession):
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    await db.delete(user)
+    await db.commit()
+    return {"status": "success", "message": "User deleted successfully"}
+
+
+@require_permission(["user.read"])
+async def get_user_by_id(user_perms: list[str], user_id: str, db: AsyncSession):
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    return user
+
+
+@require_permission(["user.create"])
+async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
+    """
+    Admin creates a new user with permission check
+    """
+    try:
+        # Check if email already exists
+        result = await db.execute(select(Users).where(Users.email == data.email))
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists"
+            )
+        
+        # Create new user
+        new_user = Users(
+            email=data.email, 
+            username=data.username, 
+            password_hash=hash_password(password=data.password),
+            fullname=data.fullname
+        )
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        
+        # Remove password hash from response
+        del new_user.password_hash
+        
+        return {
+            "status": "success",
+            "message": "User created successfully",
+            "data": new_user
+        }
+    except IntegrityError as err:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already used"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
