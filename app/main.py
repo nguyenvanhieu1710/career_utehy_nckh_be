@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api.v1 import email, payment, permission, auth, cv 
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company 
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import Base, engine, SessionLocal
 from app.models.base_model import BaseModel
@@ -49,6 +49,9 @@ app.include_router(payment.router, prefix="/api/v1/payment", tags=["Payment"])
 app.include_router(permission.router, prefix="/api/v1/permission", tags=["Permission"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(cv.router, prefix="/api/v1/cv", tags=["CV"])
+app.include_router(category.router, prefix="/api/v1/category", tags=["Category"])
+app.include_router(job.router, prefix="/api/v1/job", tags=["Job"])
+app.include_router(company.router, prefix="/api/v1/company", tags=["Company"])
 
 @app.get("/")
 def root():

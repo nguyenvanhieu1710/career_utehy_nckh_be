@@ -39,7 +39,8 @@ async def create(
         new_user = Users(email=email, 
                             username=username, 
                             password_hash=hash_password(password=password),
-                            fullname=fullname
+                            fullname=fullname,
+                            action_status="active"
                             )
         db.add(new_user)
         await db.commit()
@@ -288,6 +289,9 @@ async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
 @require_permission(["user.list"])
 async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
+    
+    # Filter out deleted users (soft delete) - allow NULL values for backward compatibility
+    base_stmt = base_stmt.where((Users.action_status != "deleted") | (Users.action_status.is_(None)))
 
     if filters.id:
         base_stmt = base_stmt.where(Users.id == filters.id)
@@ -320,7 +324,10 @@ async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db
 
 @require_permission(["user.update"])
 async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdate, db: AsyncSession):
-    result = await db.execute(select(Users).where(Users.id == user_id))
+    result = await db.execute(select(Users).where(
+        (Users.id == user_id) & 
+        ((Users.action_status != "deleted") | (Users.action_status.is_(None)))
+    ))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -373,14 +380,19 @@ async def delete_user(user_perms: list[str], user_id: str, db: AsyncSession):
             detail="User not found"
         )
     
-    await db.delete(user)
+    # Soft delete - change action_status to "deleted"
+    user.action_status = "deleted"
     await db.commit()
+    await db.refresh(user)
     return {"status": "success", "message": "User deleted successfully"}
 
 
 @require_permission(["user.read"])
 async def get_user_by_id(user_perms: list[str], user_id: str, db: AsyncSession):
-    result = await db.execute(select(Users).where(Users.id == user_id))
+    result = await db.execute(select(Users).where(
+        (Users.id == user_id) & 
+        ((Users.action_status != "deleted") | (Users.action_status.is_(None)))
+    ))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -412,7 +424,8 @@ async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
             email=data.email, 
             username=data.username, 
             password_hash=hash_password(password=data.password),
-            fullname=data.fullname
+            fullname=data.fullname,
+            action_status="active"
         )
         db.add(new_user)
         await db.commit()

@@ -8,7 +8,7 @@ from app.core.database import Base
 from sqlalchemy.dialects.postgresql import UUID
 
 def generate_uuid():
-    return str(uuid4())
+    return uuid4()  # Return UUID object, not string
 
 class BaseModel(Base):
     """Base model with common fields and methods"""

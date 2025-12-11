@@ -2,6 +2,8 @@ from sqlalchemy import Column, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from .base_model import BaseModel
 from sqlalchemy.dialects.postgresql import UUID
+from pydantic import BaseModel as PydanticBaseModel
+from typing import Optional
 
 class Category(BaseModel):
     __tablename__ = 'categories'
@@ -13,3 +15,20 @@ class Category(BaseModel):
     
     # Self-referential relationship for parent-child categories
     parent = relationship('Category', remote_side='Category.id', backref='subcategories')
+
+
+# Pydantic models for API
+class CategoryCreate(PydanticBaseModel):
+    name: str
+    description: Optional[str] = None
+    
+    class Config:
+        orm_mode = True
+
+
+class CategoryUpdate(PydanticBaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    
+    class Config:
+        orm_mode = True
