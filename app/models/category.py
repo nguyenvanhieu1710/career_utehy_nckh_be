@@ -21,6 +21,7 @@ class Category(BaseModel):
 class CategoryCreate(PydanticBaseModel):
     name: str
     description: Optional[str] = None
+    avatar_url: Optional[str] = None
     
     class Config:
         orm_mode = True
@@ -29,6 +30,22 @@ class CategoryCreate(PydanticBaseModel):
 class CategoryUpdate(PydanticBaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    avatar_url: Optional[str] = None
+    
+    class Config:
+        orm_mode = True
+
+
+class CategoryResponse(PydanticBaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    avatar_url: Optional[str] = None
+    action_status: str
+    created_at: str
+    updated_at: str
+    created_by_user_id: Optional[str] = None
+    updated_by_user_id: Optional[str] = None
     
     class Config:
         orm_mode = True

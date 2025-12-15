@@ -350,3 +350,137 @@ async def create_user_admin(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/upload-avatar/{target_user_id}")
+async def upload_user_avatar(
+    target_user_id: str,
+    file: UploadFile = Form(..., description="Avatar image file"),
+    optimize: bool = Form(True, description="Whether to optimize the uploaded image"),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Upload avatar for a specific user
+    
+    - **target_user_id**: ID of the user to update
+    - **file**: Avatar image file (jpg, jpeg, png, gif, webp)
+    - **optimize**: Whether to optimize image (resize + compress)
+    
+    Returns uploaded avatar information and updates user
+    """
+    try:
+        print("=" * 60)
+        print("📤 USER AVATAR UPLOAD REQUEST")
+        print(f"Admin User ID: {user_id}")
+        print(f"Target User ID: {target_user_id}")
+        print(f"File name: {file.filename}")
+        print(f"Content type: {file.content_type}")
+        
+        # Check user permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        print(f"User permissions: {perms}")
+        
+        # Check if target user exists
+        target_user = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Import upload service
+        from app.services.upload_service import upload_service
+        
+        # Upload avatar file
+        upload_result = await upload_service.upload_single_file(
+            file=file,
+            file_type="users",
+            optimize=optimize
+        )
+        
+        print(f"✅ Avatar uploaded: {upload_result['file_url']}")
+        
+        # Update user with new avatar URL
+        update_data = UserUpdate(avatar_url=upload_result['file_url'])
+        updated_user = await user_service.update_user_by_id(
+            user_perms=perms,
+            user_id=target_user_id,
+            data=update_data,
+            db=db
+        )
+        
+        print(f"✅ User updated with new avatar")
+        print("=" * 60)
+        
+        return {
+            "status": "success",
+            "message": "User avatar uploaded successfully",
+            "avatar_info": upload_result,
+            "user": updated_user
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Avatar Upload Error: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Avatar upload failed: {str(e)}"
+        )
+
+
+@router.delete("/remove-avatar/{target_user_id}")
+async def remove_user_avatar(
+    target_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Remove avatar from a specific user
+    
+    - **target_user_id**: ID of the user to update
+    
+    Returns success message and updates user
+    """
+    try:
+        print(f"🗑️ REMOVE USER AVATAR: {target_user_id} by admin {user_id}")
+        
+        # Check user permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        # Check if target user exists
+        target_user = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update user to remove avatar (set to None/empty)
+        update_data = UserUpdate(avatar_url="")
+        updated_user = await user_service.update_user_by_id(
+            user_perms=perms,
+            user_id=target_user_id,
+            data=update_data,
+            db=db
+        )
+        
+        print(f"✅ User avatar removed successfully")
+        
+        return {
+            "status": "success",
+            "message": "User avatar removed successfully",
+            "user": updated_user
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Remove Avatar Error: {type(e).__name__}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to remove avatar: {str(e)}"
+        )

@@ -92,3 +92,18 @@ async def get_current_user_permissions(token: str = Depends(oauth2_scheme)):
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def verify_token_user_optional(token: str = Depends(oauth2_scheme)):
+    """
+    Optional token verification - returns user_id if valid token, None if no/invalid token
+    Used for endpoints that can work with or without authentication
+    """
+    try:
+        if not token:
+            return None
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("user_id")
+        return user_id
+    except JWTError:
+        return None

@@ -1,6 +1,10 @@
 from fastapi import FastAPI
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload 
 from fastapi.middleware.cors import CORSMiddleware
+from app.middleware.static_files import StaticFileSecurityMiddleware
+import os
 from app.core.database import Base, engine, SessionLocal
 from app.models.base_model import BaseModel
 from app.models.category import Category
@@ -17,17 +21,33 @@ from app.models.job_status import JobStatus
 from pydantic import BaseModel, EmailStr
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Career UTEHY API",
+    description="Student Job Recommendation System API",
+    version="1.0.0"
+)
 
 async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# Khởi tạo DB (chạy 1 lần lúc start)
+# Khởi tạo DB và uploads directory (chạy 1 lần lúc start)
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Ensure uploads directory exists
+    uploads_dir = "uploads"
+    if not os.path.exists(uploads_dir):
+        os.makedirs(uploads_dir, exist_ok=True)
+    
+    # Create subdirectories for different file types
+    subdirs = ["users", "categories", "data-sources", "jobs", "companies", "cv"]
+    for subdir in subdirs:
+        subdir_path = os.path.join(uploads_dir, subdir)
+        if not os.path.exists(subdir_path):
+            os.makedirs(subdir_path, exist_ok=True)
 
 origins = [
     "http://localhost:3000",
@@ -44,6 +64,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add static file security middleware
+app.add_middleware(StaticFileSecurityMiddleware, uploads_path="uploads")
+
 app.include_router(email.router, prefix="/api/v1/email", tags=["Email"])
 app.include_router(payment.router, prefix="/api/v1/payment", tags=["Payment"])
 app.include_router(permission.router, prefix="/api/v1/permission", tags=["Permission"])
@@ -52,7 +75,73 @@ app.include_router(cv.router, prefix="/api/v1/cv", tags=["CV"])
 app.include_router(category.router, prefix="/api/v1/category", tags=["Category"])
 app.include_router(job.router, prefix="/api/v1/job", tags=["Job"])
 app.include_router(company.router, prefix="/api/v1/company", tags=["Company"])
+app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
+
+# Static file serving for uploads
+uploads_dir = "uploads"
+if os.path.exists(uploads_dir):
+    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+
+# Custom static file handler with security and caching
+@app.get("/static/uploads/{file_path:path}")
+async def serve_upload_file(file_path: str):
+    """
+    Serve uploaded files with proper security and caching headers
+    """
+    full_path = os.path.join(uploads_dir, file_path)
+    
+    # Security check: ensure path is within uploads directory
+    uploads_abs = os.path.abspath(uploads_dir)
+    requested_abs = os.path.abspath(full_path)
+    
+    if not requested_abs.startswith(uploads_abs):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    # Check if file exists and is actually a file
+    if not os.path.exists(full_path) or not os.path.isfile(full_path):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found"
+        )
+    
+    # Get file extension for proper MIME type
+    from pathlib import Path
+    file_ext = Path(full_path).suffix.lower()
+    media_type_map = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.tiff': 'image/tiff'
+    }
+    
+    media_type = media_type_map.get(file_ext, 'application/octet-stream')
+    
+    # Return file with proper headers
+    return FileResponse(
+        path=full_path,
+        media_type=media_type,
+        filename=os.path.basename(full_path),
+        headers={
+            "Cache-Control": "public, max-age=31536000",  # Cache for 1 year
+            "ETag": f'"{os.path.getmtime(full_path)}"',   # ETag for caching
+            "X-Content-Type-Options": "nosniff",          # Security header
+            "X-Frame-Options": "DENY",                    # Prevent embedding
+        }
+    )
 
 @app.get("/")
 def root():
-    return {"msg": "backend is running"}
+    return {
+        "msg": "backend is running",
+        "version": "1.0.0",
+        "upload_system": "enabled",
+        "static_files": "/uploads"
+    }

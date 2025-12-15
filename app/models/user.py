@@ -85,6 +85,7 @@ class UserUpdate(BaseModel):
     address: Optional[str] = None
     birthday: Optional[str] = None
     gender: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 class AddPerm(BaseModel):
     user_id: str

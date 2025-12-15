@@ -16,7 +16,9 @@ from sqlalchemy.exc import IntegrityError
 import string
 import secrets
 import math
+import os
 from app.core.perms import require_permission
+from app.services.upload_service import upload_service
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -336,6 +338,14 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
             detail="User not found"
         )
     
+    # Handle avatar cleanup if avatar_url is being changed
+    old_avatar_url = user.avatar_url
+    cleanup_old_avatar = False
+    
+    if data.avatar_url is not None and data.avatar_url != old_avatar_url:
+        cleanup_old_avatar = True
+        print(f"🔄 Avatar change detected: '{old_avatar_url}' -> '{data.avatar_url}'")
+    
     # Update basic fields
     if data.username:
         user.username = data.username
@@ -363,9 +373,32 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
             )
     if data.gender:
         user.gender = data.gender
+    if data.avatar_url is not None:  # Allow empty string to clear avatar_url
+        user.avatar_url = data.avatar_url
 
     await db.commit()
     await db.refresh(user)
+    
+    # Cleanup old avatar file after successful database update
+    if cleanup_old_avatar and old_avatar_url:
+        try:
+            # Extract file path from URL (remove /uploads/ prefix)
+            if old_avatar_url.startswith('/uploads/'):
+                old_file_path = old_avatar_url[9:]  # Remove '/uploads/' prefix
+                full_old_path = os.path.join(upload_service.base_upload_dir, old_file_path)
+                
+                if os.path.exists(full_old_path):
+                    success = upload_service.delete_file(full_old_path)
+                    if success:
+                        print(f"✅ Old avatar deleted: {full_old_path}")
+                    else:
+                        print(f"⚠️ Failed to delete old avatar: {full_old_path}")
+                else:
+                    print(f"⚠️ Old avatar file not found: {full_old_path}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning up old avatar: {str(e)}")
+            # Don't fail the update if cleanup fails
+    
     return user
 
 
@@ -380,10 +413,34 @@ async def delete_user(user_perms: list[str], user_id: str, db: AsyncSession):
             detail="User not found"
         )
     
+    # Store avatar URL for cleanup
+    avatar_url = user.avatar_url
+    
     # Soft delete - change action_status to "deleted"
     user.action_status = "deleted"
     await db.commit()
     await db.refresh(user)
+    
+    # Cleanup avatar file after successful soft delete
+    if avatar_url:
+        try:
+            # Extract file path from URL (remove /uploads/ prefix)
+            if avatar_url.startswith('/uploads/'):
+                file_path = avatar_url[9:]  # Remove '/uploads/' prefix
+                full_path = os.path.join(upload_service.base_upload_dir, file_path)
+                
+                if os.path.exists(full_path):
+                    success = upload_service.delete_file(full_path)
+                    if success:
+                        print(f"✅ Avatar deleted with user: {full_path}")
+                    else:
+                        print(f"⚠️ Failed to delete avatar: {full_path}")
+                else:
+                    print(f"⚠️ Avatar file not found: {full_path}")
+        except Exception as e:
+            print(f"⚠️ Error cleaning up avatar on delete: {str(e)}")
+            # Don't fail the delete if cleanup fails
+    
     return {"status": "success", "message": "User deleted successfully"}
 
 
