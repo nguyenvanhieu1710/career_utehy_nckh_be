@@ -48,6 +48,13 @@ async def startup():
         subdir_path = os.path.join(uploads_dir, subdir)
         if not os.path.exists(subdir_path):
             os.makedirs(subdir_path, exist_ok=True)
+    
+    # Seed initial data (admin user)
+    try:
+        from app.services.seed_service import seed_initial_data
+        await seed_initial_data()
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to seed initial data: {str(e)}")
 
 origins = [
     "http://localhost:3000",

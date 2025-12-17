@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, delete
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from fastapi import Depends, HTTPException, status
@@ -271,21 +271,52 @@ async def get_user_roles(user_id: str, db: AsyncSession) -> list[str]:
 
 
 async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
-    stmt_user_perms = select(UserPerm.perm).where(UserPerm.user_id == user_id)
-    result_user_perms = await db.execute(stmt_user_perms)
-    direct_perms = set(result_user_perms.scalars().all())
+    try:
+        print(f"🔍 Getting permissions for user {user_id}")
+        
+        # Validate UUID format
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            print(f"❌ Invalid UUID format for user_id: {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user ID format: {user_id}"
+            )
+        
+        # Get direct user permissions
+        print(f"🔍 Querying direct permissions for user {user_id}")
+        stmt_user_perms = select(UserPerm.perm).where(UserPerm.user_id == user_id)
+        result_user_perms = await db.execute(stmt_user_perms)
+        direct_perms = set(result_user_perms.scalars().all())
+        print(f"📊 Found {len(direct_perms)} direct permissions: {direct_perms}")
 
-    stmt_group_perms = (
-        select(GroupPermission.perm)
-        .join(PermGroups, GroupPermission.group_id == PermGroups.id)
-        .join(UserRole, UserRole.group_id == PermGroups.id)
-        .where(UserRole.user_id == user_id)
-    )
-    result_group_perms = await db.execute(stmt_group_perms)
-    group_perms = set(result_group_perms.scalars().all())
+        # Get group permissions
+        print(f"🔍 Querying group permissions for user {user_id}")
+        stmt_group_perms = (
+            select(GroupPermission.perm)
+            .join(PermGroups, GroupPermission.group_id == PermGroups.id)
+            .join(UserRole, UserRole.group_id == PermGroups.id)
+            .where(UserRole.user_id == user_id)
+        )
+        result_group_perms = await db.execute(stmt_group_perms)
+        group_perms = set(result_group_perms.scalars().all())
+        print(f"📊 Found {len(group_perms)} group permissions: {group_perms}")
 
-    all_perms = list(direct_perms.union(group_perms))
-    return all_perms
+        all_perms = list(direct_perms.union(group_perms))
+        print(f"✅ Total permissions for user {user_id}: {all_perms}")
+        return all_perms
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in get_user_permissions for user {user_id}: {str(e)}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting user permissions: {str(e)}"
+        )
 
 
 @require_permission(["user.list"])
@@ -304,6 +335,10 @@ async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db
             (Users.username.ilike(keyword)) |
             (Users.email.ilike(keyword))
         )
+    
+    # Filter by role if specified
+    if filters.role_id:
+        base_stmt = base_stmt.join(UserRole).where(UserRole.group_id == filters.role_id)
 
     page = filters.page if filters.page and filters.page > 0 else 1
     row = min(filters.row if filters.row and filters.row > 0 else 10, 100)
@@ -322,6 +357,188 @@ async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db
         "row": row,
         "data": data
     }
+
+
+async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
+    """
+    Get user with their roles and permissions
+    """
+    try:
+        print(f"🔍 Getting roles for user_id: {user_id}")
+        
+        # Validate UUID format
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid UUID format: {user_id}"
+            )
+        
+        # Get user basic info
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        print(f"✅ User found: {user.fullname}")
+        
+        # Get user roles
+        print(f"🔍 Querying roles for user {user_id}...")
+        roles_stmt = (
+            select(PermGroups.id, PermGroups.name, PermGroups.description)
+            .join(UserRole, UserRole.group_id == PermGroups.id)
+            .where(UserRole.user_id == user_id)
+        )
+        roles_result = await db.execute(roles_stmt)
+        roles_rows = roles_result.fetchall()
+        print(f"📊 Found {len(roles_rows)} roles for user {user_id}")
+        
+        roles = [
+            {"id": str(row.id), "name": row.name, "description": row.description}
+            for row in roles_rows
+        ]
+        
+        # Get user individual permissions
+        print(f"🔍 Querying permissions for user {user_id}...")
+        perms_stmt = select(UserPerm.perm).where(UserPerm.user_id == user_id)
+        perms_result = await db.execute(perms_stmt)
+        perm_rows = perms_result.fetchall()
+        print(f"📊 Found {len(perm_rows)} individual permissions for user {user_id}")
+        
+        permissions = [row.perm for row in perm_rows]
+        
+        result_data = {
+            "id": str(user.id),
+            "email": user.email or "",
+            "fullname": user.fullname or "",
+            "username": user.username or "",
+            "phone": user.phone or "",
+            "address": user.address or "",
+            "birthday": str(user.birthday) if user.birthday else None,
+            "gender": user.gender or "",
+            "avatar_url": user.avatar_url or "",
+            "action_status": user.action_status or "active",
+            "roles": roles,
+            "permissions": permissions,
+            "created_at": str(user.created_at) if user.created_at else None,
+            "updated_at": str(user.updated_at) if user.updated_at else None
+        }
+        
+        print(f"✅ Returning user data for {user_id}: {len(roles)} roles, {len(permissions)} permissions")
+        return result_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in get_user_with_roles_permissions for user {user_id}: {str(e)}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting user roles/permissions: {str(e)}"
+        )
+
+
+@require_permission(["user.update"])
+async def update_user_roles_permissions(user_perms: list[str], user_id: str, data, db: AsyncSession):
+    """
+    Update user roles and permissions
+    """
+    try:
+        # Verify user exists
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Remove existing roles
+        await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
+        
+        # Remove existing individual permissions
+        await db.execute(delete(UserPerm).where(UserPerm.user_id == user_id))
+        
+        # Add new roles
+        if hasattr(data, 'role_ids') and data.role_ids:
+            for role_id in data.role_ids:
+                # Verify role exists
+                role_result = await db.execute(
+                    select(PermGroups).where(PermGroups.id == role_id)
+                )
+                if role_result.scalar_one_or_none():
+                    user_role = UserRole(
+                        user_id=user_id,
+                        group_id=role_id
+                    )
+                    db.add(user_role)
+        
+        # Add new individual permissions
+        if hasattr(data, 'permissions') and data.permissions:
+            for perm in data.permissions:
+                user_perm = UserPerm(
+                    user_id=user_id,
+                    perm=perm
+                )
+                db.add(user_perm)
+        
+        await db.commit()
+        
+        return {
+            "status": "success",
+            "message": "User roles and permissions updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+async def get_available_roles(db: AsyncSession):
+    """
+    Get all available roles
+    """
+    try:
+        print("🔍 Querying available roles from perm_groups table...")
+        result = await db.execute(select(PermGroups))
+        roles = result.scalars().all()
+        print(f"📊 Found {len(roles)} roles in database")
+        
+        roles_data = []
+        for role in roles:
+            role_data = {
+                "id": str(role.id),
+                "name": role.name or "",
+                "description": role.description or ""
+            }
+            roles_data.append(role_data)
+            print(f"  - Role: {role_data}")
+        
+        print(f"✅ Returning {len(roles_data)} roles")
+        return roles_data
+        
+    except Exception as e:
+        print(f"❌ Error in get_available_roles: {str(e)}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting available roles: {str(e)}"
+        )
 
 
 @require_permission(["user.update"])
@@ -375,6 +592,36 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
         user.gender = data.gender
     if data.avatar_url is not None:  # Allow empty string to clear avatar_url
         user.avatar_url = data.avatar_url
+
+    # Update roles and permissions if provided
+    if data.role_ids is not None:
+        # Remove existing roles
+        await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
+        
+        # Add new roles
+        for role_id in data.role_ids:
+            # Verify role exists
+            role_result = await db.execute(
+                select(PermGroups).where(PermGroups.id == role_id)
+            )
+            if role_result.scalar_one_or_none():
+                user_role = UserRole(
+                    user_id=user_id,
+                    group_id=role_id
+                )
+                db.add(user_role)
+
+    if data.permissions is not None:
+        # Remove existing individual permissions
+        await db.execute(delete(UserPerm).where(UserPerm.user_id == user_id))
+        
+        # Add new individual permissions
+        for perm in data.permissions:
+            user_perm = UserPerm(
+                user_id=user_id,
+                perm=perm
+            )
+            db.add(user_perm)
 
     await db.commit()
     await db.refresh(user)
@@ -464,7 +711,7 @@ async def get_user_by_id(user_perms: list[str], user_id: str, db: AsyncSession):
 @require_permission(["user.create"])
 async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
     """
-    Admin creates a new user with permission check
+    Admin creates a new user with permission check and role assignment
     """
     try:
         # Check if email already exists
@@ -488,12 +735,37 @@ async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
         await db.commit()
         await db.refresh(new_user)
         
+        # Assign roles if provided
+        if hasattr(data, 'role_ids') and data.role_ids:
+            for role_id in data.role_ids:
+                # Verify role exists
+                role_result = await db.execute(
+                    select(PermGroups).where(PermGroups.id == role_id)
+                )
+                if role_result.scalar_one_or_none():
+                    user_role = UserRole(
+                        user_id=new_user.id,
+                        group_id=role_id
+                    )
+                    db.add(user_role)
+        
+        # Assign individual permissions if provided
+        if hasattr(data, 'permissions') and data.permissions:
+            for perm in data.permissions:
+                user_perm = UserPerm(
+                    user_id=new_user.id,
+                    perm=perm
+                )
+                db.add(user_perm)
+        
+        await db.commit()
+        
         # Remove password hash from response
         del new_user.password_hash
         
         return {
             "status": "success",
-            "message": "User created successfully",
+            "message": "User created successfully with roles and permissions",
             "data": new_user
         }
     except IntegrityError as err:

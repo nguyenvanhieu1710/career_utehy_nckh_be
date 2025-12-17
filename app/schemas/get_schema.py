@@ -9,6 +9,7 @@ class GetSchema(BaseModel):
     searchKeyword: Optional[str] = None
     page: Optional[int] = None
     row: Optional[int] = None
+    role_id: Optional[str] = None  # Filter by role ID
 
 class GetBlogSchema(BaseModel):
     user_id: Optional[str] = None

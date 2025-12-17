@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, UniqueConstraint, Date
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from app.core.database import Base
 from sqlalchemy.dialects.postgresql import UUID
@@ -69,6 +69,8 @@ class UserCreateByAdmin(BaseModel):
     username: str
     password: str
     fullname: str
+    role_ids: Optional[List[str]] = []
+    permissions: Optional[List[str]] = []
     class Config:
         orm_mode = True
 
@@ -86,6 +88,8 @@ class UserUpdate(BaseModel):
     birthday: Optional[str] = None
     gender: Optional[str] = None
     avatar_url: Optional[str] = None
+    role_ids: Optional[List[str]] = None
+    permissions: Optional[List[str]] = None
 
 class AddPerm(BaseModel):
     user_id: str
@@ -94,5 +98,30 @@ class AddPerm(BaseModel):
 class AddRole(BaseModel):
     user_id: str
     group_id: str
+
+class UserWithRoles(BaseModel):
+    id: str
+    email: str
+    fullname: str
+    username: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
+    avatar_url: Optional[str] = None
+    action_status: Optional[str] = None
+    roles: List[dict] = []  # [{"id": "...", "name": "Admin", "description": "..."}]
+    permissions: List[str] = []  # ["user.create", "user.update"]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class AvailableRole(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+
+class UpdateUserRoles(BaseModel):
+    role_ids: List[str] = []
+    permissions: List[str] = []
 
 

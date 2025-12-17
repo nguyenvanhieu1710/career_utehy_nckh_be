@@ -1,10 +1,11 @@
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, UploadFile, Response, Query, Depends, HTTPException, Form, status
+from sqlalchemy.future import select
 from app.services import user_service, otp_service
 from app.schemas import get_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
-from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm, UserCreateByAdmin
+from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm, UserCreateByAdmin, UpdateUserRoles, Users
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import json
@@ -483,4 +484,178 @@ async def remove_user_avatar(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to remove avatar: {str(e)}"
+        )
+
+
+@router.get("/get-user-roles-permissions/{target_user_id}")
+async def get_user_roles_permissions(
+    target_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get user with their roles and permissions
+    """
+    try:
+        print(f"📥 GET /get-user-roles-permissions/{target_user_id} from user {user_id}")
+        
+        # Validate target_user_id format
+        try:
+            import uuid
+            uuid.UUID(target_user_id)
+        except ValueError:
+            print(f"❌ Invalid UUID format: {target_user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user ID format: {target_user_id}"
+            )
+        
+        # Check permissions
+        print(f"🔍 Checking permissions for user {user_id}...")
+        try:
+            perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+            print(f"📊 User {user_id} permissions: {perms}")
+        except Exception as perm_error:
+            print(f"❌ Error getting permissions for user {user_id}: {str(perm_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error checking permissions: {str(perm_error)}"
+            )
+        
+        if "user.read" not in perms and "*" not in perms:
+            print(f"❌ Permission denied for user {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: user.read required"
+            )
+        
+        print(f"✅ Permission check passed for user {user_id}")
+        
+        # Get user roles and permissions
+        try:
+            result = await user_service.get_user_with_roles_permissions(user_id=target_user_id, db=db)
+            print(f"✅ Get user roles/permissions API success for target user {target_user_id}")
+            return {"status": "success", "data": result}
+        except Exception as get_error:
+            print(f"❌ Error getting user roles/permissions for {target_user_id}: {str(get_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error getting user data: {str(get_error)}"
+            )
+            
+    except HTTPException:
+        raise
+    except PermissionError as e:
+        print(f"❌ Permission error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        print(f"❌ Unexpected error in get-user-roles-permissions endpoint: {str(e)}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.put("/update-user-roles/{target_user_id}")
+async def update_user_roles(
+    target_user_id: str,
+    data: UpdateUserRoles,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Update user roles and permissions
+    """
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.update_user_roles_permissions(
+            user_perms=perms, 
+            user_id=target_user_id, 
+            data=data, 
+            db=db
+        )
+        return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/available-roles")
+async def get_available_roles(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get all available roles
+    """
+    try:
+        print("🚀 AVAILABLE-ROLES ENDPOINT CALLED - NEW CODE LOADED!")
+        print(f"📥 GET /available-roles request from user {user_id}")
+        
+        # Check permissions
+        print(f"🔍 Checking permissions for user {user_id}...")
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        print(f"📊 User {user_id} permissions: {perms}")
+        
+        if "user.read" not in perms and "*" not in perms:
+            print(f"❌ Permission denied for user {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: user.read required"
+            )
+        
+        print(f"✅ Permission check passed for user {user_id}")
+        result = await user_service.get_available_roles(db=db)
+        print(f"✅ Available roles API success: {len(result)} roles")
+        return {"status": "success", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error in available-roles endpoint: {str(e)}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error in available-roles: {str(e)}"
+        )
+
+
+@router.get("/available-permissions")
+async def get_available_permissions(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get all available permissions
+    """
+    try:
+        # Check permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        if "user.read" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied"
+            )
+        
+        # Import permissions from core
+        from app.core import perms as core_perms
+        all_permissions = core_perms.get_all_permissions()
+        
+        return {"status": "success", "data": all_permissions}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
