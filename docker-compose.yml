@@ -1,9 +1,9 @@
-version: '3.8'
+version: "3.8"
 
 services:
   db:
     image: postgres:12
-    container_name: postgres_career_utehy_nckh_db
+    container_name: career_utehy_nckh_db
     restart: always
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -13,7 +13,89 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_DATABASE}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build: .
+    container_name: career_utehy_nckh_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_DATABASE=${DB_DATABASE}
+      - SECRET_KEY=${SECRET_KEY}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_SECRET=${PAYPAL_SECRET}
+      - PAYPAL_BASE_URL=${PAYPAL_BASE_URL}
+      - MOMO_ENDPOINT=${MOMO_ENDPOINT}
+      - MOMO_ACCESS_KEY=${MOMO_ACCESS_KEY}
+      - MOMO_SECRET_KEY=${MOMO_SECRET_KEY}
+      - MOMO_PARTNER_CODE=${MOMO_PARTNER_CODE}
+      - MOMO_IPN_URL=${MOMO_IPN_URL}
+      - MOMO_REDIRECT_BASE=${MOMO_REDIRECT_BASE}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_STARTTLS=${MAIL_STARTTLS}
+      - MAIL_SSL_TLS=${MAIL_SSL_TLS}
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ../career_utehy_nckh_fe
+    container_name: career_utehy_nckh_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_reverse_proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - db
 
 volumes:
   postgres_data:
-
+  pgadmin_data:
