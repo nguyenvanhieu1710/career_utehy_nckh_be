@@ -140,7 +140,7 @@ career_utehy_nckh_be/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
-└── .env
+└── .env.example
 ```
 
 ---
