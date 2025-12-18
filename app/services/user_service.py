@@ -18,6 +18,7 @@ import secrets
 import math
 import os
 from app.core.perms import require_permission
+from app.core.status import EntityStatus, is_valid_status, get_default_status
 from app.services.upload_service import upload_service
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -27,6 +28,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+def get_active_user_filter():
+    """Get filter condition for active (non-deleted) users"""
+    return (Users.action_status != EntityStatus.DELETED.value) | (Users.action_status.is_(None))
 
 
 async def create(
@@ -42,7 +47,7 @@ async def create(
                             username=username, 
                             password_hash=hash_password(password=password),
                             fullname=fullname,
-                            action_status="active"
+                            action_status=get_default_status()
                             )
         db.add(new_user)
         await db.commit()
@@ -323,8 +328,8 @@ async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
 async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
     
-    # Filter out deleted users (soft delete) - allow NULL values for backward compatibility
-    base_stmt = base_stmt.where((Users.action_status != "deleted") | (Users.action_status.is_(None)))
+    # Filter out deleted users (soft delete)
+    base_stmt = base_stmt.where(get_active_user_filter())
 
     if filters.id:
         base_stmt = base_stmt.where(Users.id == filters.id)
@@ -339,6 +344,10 @@ async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db
     # Filter by role if specified
     if filters.role_id:
         base_stmt = base_stmt.join(UserRole).where(UserRole.group_id == filters.role_id)
+    
+    # Filter by status if specified
+    if filters.status and filters.status != "all":
+        base_stmt = base_stmt.where(Users.action_status == filters.status)
 
     page = filters.page if filters.page and filters.page > 0 else 1
     row = min(filters.row if filters.row and filters.row > 0 else 10, 100)
@@ -422,7 +431,7 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
             "birthday": str(user.birthday) if user.birthday else None,
             "gender": user.gender or "",
             "avatar_url": user.avatar_url or "",
-            "action_status": user.action_status or "active",
+            "action_status": user.action_status or get_default_status(),
             "roles": roles,
             "permissions": permissions,
             "created_at": str(user.created_at) if user.created_at else None,
@@ -592,6 +601,16 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
         user.gender = data.gender
     if data.avatar_url is not None:  # Allow empty string to clear avatar_url
         user.avatar_url = data.avatar_url
+    
+    # Update status if provided
+    if data.action_status:
+        if is_valid_status(data.action_status):
+            user.action_status = data.action_status
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {data.action_status}. Valid statuses are: {[s.value for s in EntityStatus]}"
+            )
 
     # Update roles and permissions if provided
     if data.role_ids is not None:
@@ -729,7 +748,7 @@ async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
             username=data.username, 
             password_hash=hash_password(password=data.password),
             fullname=data.fullname,
-            action_status="active"
+            action_status=get_default_status()
         )
         db.add(new_user)
         await db.commit()

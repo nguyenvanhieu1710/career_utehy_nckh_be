@@ -8,13 +8,12 @@ from app.models.user import Users, UserRole, UserPerm
 from app.models.perm_groups import PermGroups, GroupPermission
 from app.core.database import SessionLocal
 from app.services.user_service import hash_password
+from app.core.status import EntityStatus
 
 async def create_admin_user():
     """Create admin user with full permissions if not exists"""
     async with SessionLocal() as db:
-        try:
-            print("🔍 Checking for existing admin user...")
-            
+        try:            
             # Check if admin user already exists
             result = await db.execute(
                 select(Users).where(Users.email == "admin@gmail.com")
@@ -22,21 +21,19 @@ async def create_admin_user():
             existing_admin = result.scalar_one_or_none()
             
             if existing_admin:
-                print("✅ Admin user already exists")
+                # print("✅ Admin user already exists")
                 return existing_admin
-            
-            print("🔨 Creating admin user and permissions...")
-            
+                        
             # Create Super Admin group if not exists
             result = await db.execute(
-                select(PermGroups).where(PermGroups.name == "Super Admin")
+                select(PermGroups).where(PermGroups.name == "Admin")
             )
             admin_group = result.scalar_one_or_none()
             
             if not admin_group:
                 admin_group = PermGroups(
                     id=uuid.uuid4(),
-                    name="Super Admin",
+                    name="Admin",
                     description="Full system access"
                 )
                 db.add(admin_group)
@@ -61,7 +58,7 @@ async def create_admin_user():
                     )
                     db.add(group_perm)
                 
-                print(f"✅ Created admin group with {len(permissions)} permissions")
+                # print(f"✅ Created admin group with {len(permissions)} permissions")
             
             # Create admin user
             admin_password = "admin123"
@@ -72,8 +69,8 @@ async def create_admin_user():
                 email="admin@gmail.com",
                 password_hash=password_hash,
                 username="admin",
-                fullname="System Administrator",
-                action_status="active"
+                fullname="Admin",
+                action_status=EntityStatus.ACTIVE.value
             )
             db.add(admin_user)
             await db.flush()  # Get the ID
@@ -95,11 +92,7 @@ async def create_admin_user():
             db.add(user_perm)
             
             await db.commit()
-            
-            print("✅ Admin user created successfully!")
-            print("📧 Email: admin@gmail.com")
-            print("🔑 Password: admin123")
-            print("🛡️ Permissions: Full system access")
+
             
             return admin_user
             
@@ -111,14 +104,10 @@ async def create_admin_user():
 
 async def seed_initial_data():
     """Seed all initial data"""
-    try:
-        print("🚀 Starting initial data seeding...")
-        
+    try:        
         # Create admin user
         await create_admin_user()
-        
-        print("🎉 Initial data seeding completed successfully!")
-        
+                
     except Exception as e:
         print(f"❌ Error in initial data seeding: {str(e)}")
         raise e

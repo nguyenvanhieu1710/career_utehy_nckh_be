@@ -88,6 +88,7 @@ class UserUpdate(BaseModel):
     birthday: Optional[str] = None
     gender: Optional[str] = None
     avatar_url: Optional[str] = None
+    action_status: Optional[str] = None
     role_ids: Optional[List[str]] = None
     permissions: Optional[List[str]] = None
 

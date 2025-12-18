@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload 
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public 
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 import os
@@ -83,6 +83,8 @@ app.include_router(category.router, prefix="/api/v1/category", tags=["Category"]
 app.include_router(job.router, prefix="/api/v1/job", tags=["Job"])
 app.include_router(company.router, prefix="/api/v1/company", tags=["Company"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
+app.include_router(common.router, prefix="/api/v1/common", tags=["Common"])
+app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
 
 # Static file serving for uploads
 uploads_dir = "uploads"

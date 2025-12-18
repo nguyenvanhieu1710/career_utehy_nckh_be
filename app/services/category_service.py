@@ -264,3 +264,79 @@ def validate_avatar_url(avatar_url: str) -> bool:
     full_path = os.path.join(upload_service.base_upload_dir, file_path)
     
     return os.path.exists(full_path) and os.path.isfile(full_path)
+
+
+# PUBLIC METHODS (No authentication required)
+
+async def get_public_categories(limit: int, db: AsyncSession):
+    """
+    Get active categories for public display (no authentication required)
+    Returns only basic information for active categories
+    """
+    try:
+        print(f"🔍 Getting public categories with limit: {limit}")
+        
+        # Query only active categories
+        stmt = select(Category).where(
+            (Category.action_status == "active") | (Category.action_status.is_(None))
+        ).limit(limit)
+        
+        result = await db.execute(stmt)
+        categories = result.scalars().all()
+        
+        # Convert to public format (only essential fields)
+        public_categories = []
+        for category in categories:
+            public_category = {
+                "id": str(category.id),
+                "name": category.name,
+                "description": category.description,
+                "avatar_url": category.avatar_url,
+                "created_at": str(category.created_at) if category.created_at else None
+            }
+            public_categories.append(public_category)
+        
+        print(f"✅ Found {len(public_categories)} public categories")
+        return public_categories
+        
+    except Exception as e:
+        print(f"❌ Error in get_public_categories: {str(e)}")
+        raise e
+
+
+async def get_public_category_by_id(category_id: str, db: AsyncSession):
+    """
+    Get public category detail by ID (no authentication required)
+    Returns category details if active
+    """
+    try:
+        print(f"🔍 Getting public category detail: {category_id}")
+        
+        # Query only active category
+        stmt = select(Category).where(
+            (Category.id == category_id) & 
+            ((Category.action_status == "active") | (Category.action_status.is_(None)))
+        )
+        
+        result = await db.execute(stmt)
+        category = result.scalar_one_or_none()
+        
+        if not category:
+            print(f"❌ Category not found or not active: {category_id}")
+            return None
+        
+        # Convert to public format
+        public_category = {
+            "id": str(category.id),
+            "name": category.name,
+            "description": category.description,
+            "avatar_url": category.avatar_url,
+            "created_at": str(category.created_at) if category.created_at else None
+        }
+        
+        print(f"✅ Found public category: {category.name}")
+        return public_category
+        
+    except Exception as e:
+        print(f"❌ Error in get_public_category_by_id: {str(e)}")
+        raise e
