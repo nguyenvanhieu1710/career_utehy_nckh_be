@@ -22,6 +22,7 @@ from pydantic import BaseModel, EmailStr
 
 
 app = FastAPI(
+    # root_path="/api",
     title="Career UTEHY API",
     description="Student Job Recommendation System API",
     version="1.0.0"
