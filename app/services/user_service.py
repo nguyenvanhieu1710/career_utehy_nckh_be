@@ -115,7 +115,8 @@ async def get_user_by_user_id_decode_token(
             "user_id": user.id,
             "user_name": user.username,
             "fullname": user.fullname,
-            "email": user.email}
+            "email": user.email,
+            "avatar_url": user.avatar_url}
 
 async def verify_success(
         email: str,
