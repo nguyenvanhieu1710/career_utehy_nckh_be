@@ -50,7 +50,7 @@ class SingleUploadResponse(BaseModel):
     
     class Config:
         use_enum_values = True
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "success",
                 "file_url": "/uploads/categories/2024-12-11/tech-a1b2c3d4-123456.jpg",
@@ -73,7 +73,7 @@ class MultipleUploadResponse(BaseModel):
     total_failed: int = Field(..., description="Number of failed uploads", ge=0)
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "success",
                 "uploaded_files": [
@@ -106,7 +106,7 @@ class FileInfoResponse(BaseModel):
     exists: bool = Field(True, description="Whether the file exists")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "file_path": "uploads/categories/2024-12-11/tech-a1b2c3d4-123456.jpg",
                 "file_url": "/uploads/categories/2024-12-11/tech-a1b2c3d4-123456.jpg",
@@ -126,7 +126,7 @@ class DeleteFileResponse(BaseModel):
     file_path: Optional[str] = Field(None, description="Path of the deleted file")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "success",
                 "message": "File deleted successfully",
@@ -143,7 +143,7 @@ class UploadValidationError(BaseModel):
     details: Optional[dict] = Field(None, description="Additional error details")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "error",
                 "error_type": "file_type_invalid",
@@ -220,7 +220,7 @@ class ErrorResponse(BaseModel):
     details: Optional[dict] = Field(None, description="Additional error details")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "error",
                 "message": "File upload failed",
@@ -242,7 +242,7 @@ class SuccessResponse(BaseModel):
     data: Optional[dict] = Field(None, description="Additional response data")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "success",
                 "message": "Operation completed successfully",

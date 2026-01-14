@@ -34,7 +34,7 @@ class JobCreate(BaseModel):
     expired_at: Optional[datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class JobUpdate(BaseModel):
@@ -58,7 +58,7 @@ class JobUpdate(BaseModel):
     expired_at: Optional[datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 @require_permission(["job.create"])
@@ -419,3 +419,24 @@ async def get_jobs_by_status(user_perms: list[str], job_status: str, filters: ge
         "row": row,
         "data": data
     }
+
+JOB_DATA = {
+    1: {
+        "title": "Backend Developer Intern",
+        "skills": ["Python", "FastAPI", "SQL"],
+        "description": "Tham gia phát triển hệ thống backend API"
+    }
+}
+
+
+def get_jobs(job_ids):
+    jobs = []
+    for job_id in job_ids:
+        if job_id in JOB_DATA:
+            job = JOB_DATA[job_id]
+            jobs.append(
+                f"- {job['title']}\n"
+                f"  Kỹ năng: {', '.join(job['skills'])}\n"
+                f"  Mô tả: {job['description']}"
+            )
+    return "\n".join(jobs)

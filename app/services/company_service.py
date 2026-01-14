@@ -27,7 +27,7 @@ class CompanyCreate(BaseModel):
     phone: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CompanyUpdate(BaseModel):
@@ -46,7 +46,7 @@ class CompanyUpdate(BaseModel):
     phone: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 @require_permission(["company.list"])

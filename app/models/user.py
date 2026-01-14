@@ -62,7 +62,7 @@ class UserSignin(BaseModel):
     password: str
     fullname: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserCreateByAdmin(BaseModel):
     email: str
@@ -72,7 +72,7 @@ class UserCreateByAdmin(BaseModel):
     role_ids: Optional[List[str]] = []
     permissions: Optional[List[str]] = []
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserLogin(BaseModel):
     email: str

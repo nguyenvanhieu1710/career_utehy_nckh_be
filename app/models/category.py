@@ -24,7 +24,7 @@ class CategoryCreate(PydanticBaseModel):
     avatar_url: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CategoryUpdate(PydanticBaseModel):
@@ -33,7 +33,7 @@ class CategoryUpdate(PydanticBaseModel):
     avatar_url: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CategoryResponse(PydanticBaseModel):
@@ -48,4 +48,4 @@ class CategoryResponse(PydanticBaseModel):
     updated_by_user_id: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True

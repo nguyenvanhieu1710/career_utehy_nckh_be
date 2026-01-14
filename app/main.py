@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public 
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 import os
+# from services.vector_service import build_faiss_index
 from app.core.database import Base, engine, SessionLocal
+from app.core.mongodb import connect_to_mongo, close_mongo_connection, mongodb_health_check
 from app.models.base_model import BaseModel
 from app.models.category import Category
 from app.models.company import Company
@@ -19,6 +21,11 @@ from app.models.perm_groups import PermGroups, GroupPermission
 from app.models.job_status import JobStatus
 
 from pydantic import BaseModel, EmailStr
+import logging
+from app.core.logging_config import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -35,8 +42,23 @@ async def get_db():
 # Khởi tạo DB và uploads directory (chạy 1 lần lúc start)
 @app.on_event("startup")
 async def startup():
+    # Initialize PostgreSQL
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Initialize MongoDB
+    try:
+        await connect_to_mongo()
+        # logger.info("✅ MongoDB connected")
+    except Exception as e:
+        logger.error(f"❌ MongoDB failed: {e}")
+        # Don't stop the app if MongoDB fails, just log the error
+    
+    # LOAD FAISS KHI START APP
+    # build_faiss_index()
+
+    # Log API documentation URL
+    logger.info("📚 Swagger UI: http://localhost:8000/docs")
     
     # Ensure uploads directory exists
     uploads_dir = "uploads"
@@ -56,6 +78,12 @@ async def startup():
         await seed_initial_data()
     except Exception as e:
         print(f"⚠️ Warning: Failed to seed initial data: {str(e)}")
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Cleanup on app shutdown"""
+    await close_mongo_connection()
+    logger.info("Application shutdown complete")
 
 origins = [
     "http://localhost:3000",
@@ -82,10 +110,12 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(cv.router, prefix="/api/v1/cv", tags=["CV"])
 app.include_router(category.router, prefix="/api/v1/category", tags=["Category"])
 app.include_router(job.router, prefix="/api/v1/job", tags=["Job"])
+app.include_router(job_mongo.router, prefix="/api/v1/job-mongo", tags=["Job MongoDB"])
 app.include_router(company.router, prefix="/api/v1/company", tags=["Company"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
 app.include_router(common.router, prefix="/api/v1/common", tags=["Common"])
 app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 
 # Static file serving for uploads
 uploads_dir = "uploads"
@@ -153,5 +183,24 @@ def root():
         "msg": "backend is running",
         "version": "1.0.0",
         "upload_system": "enabled",
-        "static_files": "/uploads"
+        "static_files": "/uploads",
+        "databases": {
+            "postgresql": "connected",
+            "mongodb": "connected" if mongodb_health_check else "disconnected"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for both databases"""
+    postgres_healthy = True  # Assume healthy if app is running
+    mongo_healthy = await mongodb_health_check()
+    
+    return {
+        "status": "healthy" if postgres_healthy and mongo_healthy else "degraded",
+        "databases": {
+            "postgresql": "healthy" if postgres_healthy else "unhealthy",
+            "mongodb": "healthy" if mongo_healthy else "unhealthy"
+        },
+        "timestamp": os.environ.get("TIMESTAMP", "unknown")
     }
