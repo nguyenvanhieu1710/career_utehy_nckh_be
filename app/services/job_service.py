@@ -91,7 +91,6 @@ async def create_job(user_perms: list[str], data: JobCreate, db: AsyncSession):
             counter += 1
         
         # Create new job
-        print(f"🔧 Creating job with data: title='{data.title}', company_id='{data.company_id}'")
         new_job = Job(
             title=data.title,
             slug=slug,
@@ -114,13 +113,9 @@ async def create_job(user_perms: list[str], data: JobCreate, db: AsyncSession):
             expired_at=data.expired_at,
             action_status="active"
         )
-        print(f"🔧 Job instance created: {new_job}")
         db.add(new_job)
-        print("🔧 Job added to session, attempting commit...")
         await db.commit()
-        print("🔧 Commit successful, refreshing...")
         await db.refresh(new_job)
-        print(f"🔧 Job refreshed: {new_job.id}")
         
         return {
             "status": "success",
@@ -474,7 +469,6 @@ async def get_jobs(job_ids):
         return formatted_jobs
         
     except Exception as e:
-        print(f"Error in get_jobs: {e}")
         import traceback
         traceback.print_exc()
         return []

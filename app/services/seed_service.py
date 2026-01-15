@@ -21,7 +21,6 @@ async def create_admin_user():
             existing_admin = result.scalar_one_or_none()
             
             if existing_admin:
-                # print("✅ Admin user already exists")
                 return existing_admin
                         
             # Create Super Admin group if not exists
@@ -57,8 +56,6 @@ async def create_admin_user():
                         perm=perm
                     )
                     db.add(group_perm)
-                
-                # print(f"✅ Created admin group with {len(permissions)} permissions")
             
             # Create admin user
             admin_password = "admin123"
@@ -97,7 +94,6 @@ async def create_admin_user():
             return admin_user
             
         except Exception as e:
-            print(f"❌ Error creating admin user: {str(e)}")
             await db.rollback()
             raise e
 
@@ -109,5 +105,4 @@ async def seed_initial_data():
         await create_admin_user()
                 
     except Exception as e:
-        print(f"❌ Error in initial data seeding: {str(e)}")
         raise e

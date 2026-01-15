@@ -68,7 +68,6 @@ async def user_update(token: str, data: UserUpdate,
                      db: AsyncSession = Depends(get_db)):
     try:
         user_payload = auth.verify_token(token=token)
-        print(user_payload)
         result = await user_service.update_user_by_email(email=user_payload["email"], data=data, db=db)
         return {'status':'success','detail': 'Đổi mật khẩu thành công', 'data': result}
     except HTTPException as ex:
@@ -236,28 +235,19 @@ async def get_users(
         user_id: str = Depends(auth.verify_token_user)
     ):
     try:
-        print("=" * 60)
-        print("📥 GET USERS REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Filters: {data}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await user_service.get_all_users(user_perms=perms, filters=data, db=db)
-        print(f"✅ Success: Found {result.get('total', 0)} users")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -371,16 +361,8 @@ async def upload_user_avatar(
     Returns uploaded avatar information and updates user
     """
     try:
-        print("=" * 60)
-        print("📤 USER AVATAR UPLOAD REQUEST")
-        print(f"Admin User ID: {user_id}")
-        print(f"Target User ID: {target_user_id}")
-        print(f"File name: {file.filename}")
-        print(f"Content type: {file.content_type}")
-        
         # Check user permissions
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
         
         # Check if target user exists
         target_user = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
@@ -400,8 +382,6 @@ async def upload_user_avatar(
             optimize=optimize
         )
         
-        print(f"✅ Avatar uploaded: {upload_result['file_url']}")
-        
         # Update user with new avatar URL
         update_data = UserUpdate(avatar_url=upload_result['file_url'])
         updated_user = await user_service.update_user_by_id(
@@ -410,9 +390,6 @@ async def upload_user_avatar(
             data=update_data,
             db=db
         )
-        
-        print(f"✅ User updated with new avatar")
-        print("=" * 60)
         
         return {
             "status": "success",
@@ -424,9 +401,6 @@ async def upload_user_avatar(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Avatar Upload Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Avatar upload failed: {str(e)}"
@@ -447,8 +421,6 @@ async def remove_user_avatar(
     Returns success message and updates user
     """
     try:
-        print(f"🗑️ REMOVE USER AVATAR: {target_user_id} by admin {user_id}")
-        
         # Check user permissions
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
         
@@ -469,8 +441,6 @@ async def remove_user_avatar(
             db=db
         )
         
-        print(f"✅ User avatar removed successfully")
-        
         return {
             "status": "success",
             "message": "User avatar removed successfully",
@@ -480,7 +450,6 @@ async def remove_user_avatar(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Remove Avatar Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to remove avatar: {str(e)}"
@@ -497,47 +466,36 @@ async def get_user_roles_permissions(
     Get user with their roles and permissions
     """
     try:
-        print(f"📥 GET /get-user-roles-permissions/{target_user_id} from user {user_id}")
-        
         # Validate target_user_id format
         try:
             import uuid
             uuid.UUID(target_user_id)
         except ValueError:
-            print(f"❌ Invalid UUID format: {target_user_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid user ID format: {target_user_id}"
             )
         
         # Check permissions
-        print(f"🔍 Checking permissions for user {user_id}...")
         try:
             perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-            print(f"📊 User {user_id} permissions: {perms}")
         except Exception as perm_error:
-            print(f"❌ Error getting permissions for user {user_id}: {str(perm_error)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error checking permissions: {str(perm_error)}"
             )
         
         if "user.read" not in perms and "*" not in perms:
-            print(f"❌ Permission denied for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied: user.read required"
             )
         
-        print(f"✅ Permission check passed for user {user_id}")
-        
         # Get user roles and permissions
         try:
             result = await user_service.get_user_with_roles_permissions(user_id=target_user_id, db=db)
-            print(f"✅ Get user roles/permissions API success for target user {target_user_id}")
             return {"status": "success", "data": result}
         except Exception as get_error:
-            print(f"❌ Error getting user roles/permissions for {target_user_id}: {str(get_error)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error getting user data: {str(get_error)}"
@@ -546,15 +504,11 @@ async def get_user_roles_permissions(
     except HTTPException:
         raise
     except PermissionError as e:
-        print(f"❌ Permission error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Unexpected error in get-user-roles-permissions endpoint: {str(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"
@@ -601,31 +555,20 @@ async def get_available_roles(
     Get all available roles
     """
     try:
-        print("🚀 AVAILABLE-ROLES ENDPOINT CALLED - NEW CODE LOADED!")
-        print(f"📥 GET /available-roles request from user {user_id}")
-        
         # Check permissions
-        print(f"🔍 Checking permissions for user {user_id}...")
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"📊 User {user_id} permissions: {perms}")
         
         if "user.read" not in perms and "*" not in perms:
-            print(f"❌ Permission denied for user {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission denied: user.read required"
             )
         
-        print(f"✅ Permission check passed for user {user_id}")
         result = await user_service.get_available_roles(db=db)
-        print(f"✅ Available roles API success: {len(result)} roles")
         return {"status": "success", "data": result}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error in available-roles endpoint: {str(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error in available-roles: {str(e)}"

@@ -283,7 +283,6 @@ class FileUtils:
                 return True
                 
         except Exception as e:
-            print(f"Error creating thumbnail: {str(e)}")
             return False
     
     @staticmethod
@@ -332,7 +331,7 @@ class FileUtils:
                         os.remove(file_info['path'])
                         deleted_count += 1
                     except Exception as e:
-                        print(f"Error deleting {file_info['path']}: {str(e)}")
+                        pass
             
             return {
                 'success': True,
@@ -365,7 +364,6 @@ class FileUtils:
             os.makedirs(directory, mode=mode, exist_ok=True)
             return True
         except Exception as e:
-            print(f"Error creating directory {directory}: {str(e)}")
             return False
     
     @staticmethod

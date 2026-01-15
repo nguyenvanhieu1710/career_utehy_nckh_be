@@ -89,7 +89,7 @@ async def startup():
         from app.services.seed_service import seed_initial_data
         await seed_initial_data()
     except Exception as e:
-        print(f"⚠️ Warning: Failed to seed initial data: {str(e)}")
+        logger.warning(f"Failed to seed initial data: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown():

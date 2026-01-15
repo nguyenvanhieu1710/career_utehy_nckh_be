@@ -23,28 +23,15 @@ async def get_jobs(
     Get all jobs with pagination and search
     """
     try:
-        print("=" * 60)
-        print("📥 GET JOBS REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Filters: {filters}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.get_all_jobs(user_perms=perms, filters=filters, db=db)
-        print(f"✅ Success: Found {result.get('total', 0)} jobs")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -86,28 +73,15 @@ async def create_job(
     Create a new job
     """
     try:
-        print("=" * 60)
-        print("📥 CREATE JOB REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Job data: title='{data.title}', company_id='{data.company_id}'")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.create_job(user_perms=perms, data=data, db=db)
-        print(f"✅ Success: Job created with ID {result['data'].id}")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -125,28 +99,15 @@ async def update_job(
     Update job by ID
     """
     try:
-        print("=" * 60)
-        print("📥 UPDATE JOB REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Job ID: {job_id}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.update_job(user_perms=perms, job_id=job_id, data=data, db=db)
-        print(f"✅ Success: Job updated")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -163,26 +124,15 @@ async def delete_job(
     Delete job by ID (soft delete)
     """
     try:
-        print("=" * 60)
-        print("📥 DELETE JOB REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Job ID: {job_id}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.delete_job(user_perms=perms, job_id=job_id, db=db)
-        print(f"✅ Success: Job deleted")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -201,28 +151,15 @@ async def approve_job(
     Approve job (change status from pending to approved)
     """
     try:
-        print("=" * 60)
-        print("📥 APPROVE JOB REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Job ID: {job_id}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.approve_job(user_perms=perms, job_id=job_id, db=db)
-        print(f"✅ Success: Job approved")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -239,28 +176,15 @@ async def reject_job(
     Reject job (change status from pending to rejected)
     """
     try:
-        print("=" * 60)
-        print("📥 REJECT JOB REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Job ID: {job_id}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.reject_job(user_perms=perms, job_id=job_id, db=db)
-        print(f"✅ Success: Job rejected")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -278,11 +202,6 @@ async def get_jobs_by_status(
     Get jobs filtered by status (pending, approved, rejected)
     """
     try:
-        print("=" * 60)
-        print(f"📥 GET JOBS BY STATUS REQUEST: {job_status}")
-        print(f"User ID: {user_id}")
-        print(f"Filters: {filters}")
-        
         # Validate status
         valid_statuses = ["pending", "approved", "rejected"]
         if job_status not in valid_statuses:
@@ -292,27 +211,19 @@ async def get_jobs_by_status(
             )
         
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await job_service.get_jobs_by_status(
             user_perms=perms, 
             job_status=job_status, 
             filters=filters, 
             db=db
         )
-        print(f"✅ Success: Found {result.get('total', 0)} {job_status} jobs")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)

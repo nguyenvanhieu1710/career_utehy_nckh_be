@@ -104,8 +104,8 @@ class UploadService:
                 img.save(file_path, optimize=True, quality=quality)
                 
         except Exception as e:
-            print(f"Warning: Could not optimize image {file_path}: {str(e)}")
             # Continue without optimization if it fails
+            pass
     
     async def upload_single_file(
         self, 
@@ -250,7 +250,6 @@ class UploadService:
                 return True
             return False
         except Exception as e:
-            print(f"Error deleting file {file_path}: {str(e)}")
             return False
     
     def get_file_info(self, file_path: str) -> Optional[dict]:
@@ -280,7 +279,6 @@ class UploadService:
                 "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
             }
         except Exception as e:
-            print(f"Error getting file info for {file_path}: {str(e)}")
             return None
 
 

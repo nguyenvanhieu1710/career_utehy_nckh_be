@@ -40,17 +40,8 @@ async def upload_single_file(
     Returns uploaded file information including public URL
     """
     try:
-        print("=" * 60)
-        print("📤 SINGLE FILE UPLOAD REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"File type: {file_type}")
-        print(f"File name: {file.filename}")
-        print(f"Content type: {file.content_type}")
-        print(f"Optimize: {optimize}")
-        
         # Check user permissions (optional - you can add specific permissions)
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
         
         # Upload file
         result = await upload_service.upload_single_file(
@@ -59,17 +50,11 @@ async def upload_single_file(
             optimize=optimize
         )
         
-        print(f"✅ Upload successful: {result['file_url']}")
-        print("=" * 60)
-        
         return SingleUploadResponse(**result)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Upload Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload failed: {str(e)}"
@@ -94,17 +79,8 @@ async def upload_multiple_files(
     Returns information about uploaded and failed files
     """
     try:
-        print("=" * 60)
-        print("📤 MULTIPLE FILES UPLOAD REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"File type: {file_type}")
-        print(f"Number of files: {len(files)}")
-        print(f"File names: {[f.filename for f in files]}")
-        print(f"Optimize: {optimize}")
-        
         # Check user permissions (optional)
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
         
         # Upload files
         result = await upload_service.upload_multiple_files(
@@ -113,17 +89,11 @@ async def upload_multiple_files(
             optimize=optimize
         )
         
-        print(f"✅ Upload completed: {result['total_uploaded']} success, {result['total_failed']} failed")
-        print("=" * 60)
-        
         return MultipleUploadResponse(**result)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Upload Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload failed: {str(e)}"
@@ -144,8 +114,6 @@ async def get_file_info(
     Returns file information including size, dates, and existence status
     """
     try:
-        print(f"📋 FILE INFO REQUEST: {file_path} by user {user_id}")
-        
         # Construct full path
         full_path = os.path.join(upload_service.base_upload_dir, file_path)
         
@@ -158,14 +126,11 @@ async def get_file_info(
                 detail="File not found"
             )
         
-        print(f"✅ File info retrieved: {file_info['file_size']} bytes")
-        
         return FileInfoResponse(**file_info)
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ File Info Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get file info: {str(e)}"
@@ -186,11 +151,8 @@ async def delete_file(
     Returns deletion status
     """
     try:
-        print(f"🗑️ DELETE FILE REQUEST: {file_path} by user {user_id}")
-        
         # Check user permissions (you might want to add specific delete permissions)
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
         
         # Construct full path
         full_path = os.path.join(upload_service.base_upload_dir, file_path)
@@ -206,7 +168,6 @@ async def delete_file(
         success = upload_service.delete_file(full_path)
         
         if success:
-            print(f"✅ File deleted successfully: {file_path}")
             return DeleteFileResponse(
                 status="success",
                 message="File deleted successfully",
@@ -221,7 +182,6 @@ async def delete_file(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Delete Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete file: {str(e)}"
@@ -281,8 +241,6 @@ async def serve_file(
         
         media_type = media_type_map.get(file_extension, 'application/octet-stream')
         
-        print(f"📁 Serving file: {file_path} (type: {media_type})")
-        
         return FileResponse(
             path=full_path,
             media_type=media_type,
@@ -292,7 +250,6 @@ async def serve_file(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Serve File Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to serve file: {str(e)}"
@@ -323,7 +280,6 @@ async def get_upload_config():
         return config
         
     except Exception as e:
-        print(f"❌ Config Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get config: {str(e)}"

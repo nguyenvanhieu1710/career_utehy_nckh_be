@@ -125,7 +125,6 @@ async def verify_success(
     """
     result = await db.execute(select(Users).where(Users.email == email))
     user = result.scalars().first()
-    print(user)
     if not user:
         raise HTTPException(status_code=404, detail="User not found!")
     payload = {
@@ -278,27 +277,21 @@ async def get_user_roles(user_id: str, db: AsyncSession) -> list[str]:
 
 async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
     try:
-        print(f"🔍 Getting permissions for user {user_id}")
-        
         # Validate UUID format
         try:
             uuid.UUID(user_id)
         except ValueError:
-            print(f"❌ Invalid UUID format for user_id: {user_id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid user ID format: {user_id}"
             )
         
         # Get direct user permissions
-        print(f"🔍 Querying direct permissions for user {user_id}")
         stmt_user_perms = select(UserPerm.perm).where(UserPerm.user_id == user_id)
         result_user_perms = await db.execute(stmt_user_perms)
         direct_perms = set(result_user_perms.scalars().all())
-        print(f"📊 Found {len(direct_perms)} direct permissions: {direct_perms}")
 
         # Get group permissions
-        print(f"🔍 Querying group permissions for user {user_id}")
         stmt_group_perms = (
             select(GroupPermission.perm)
             .join(PermGroups, GroupPermission.group_id == PermGroups.id)
@@ -307,18 +300,13 @@ async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
         )
         result_group_perms = await db.execute(stmt_group_perms)
         group_perms = set(result_group_perms.scalars().all())
-        print(f"📊 Found {len(group_perms)} group permissions: {group_perms}")
 
         all_perms = list(direct_perms.union(group_perms))
-        print(f"✅ Total permissions for user {user_id}: {all_perms}")
         return all_perms
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error in get_user_permissions for user {user_id}: {str(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error getting user permissions: {str(e)}"
@@ -374,8 +362,6 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
     Get user with their roles and permissions
     """
     try:
-        print(f"🔍 Getting roles for user_id: {user_id}")
-        
         # Validate UUID format
         try:
             uuid.UUID(user_id)
@@ -395,10 +381,7 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
                 detail="User not found"
             )
         
-        print(f"✅ User found: {user.fullname}")
-        
         # Get user roles
-        print(f"🔍 Querying roles for user {user_id}...")
         roles_stmt = (
             select(PermGroups.id, PermGroups.name, PermGroups.description)
             .join(UserRole, UserRole.group_id == PermGroups.id)
@@ -406,7 +389,6 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
         )
         roles_result = await db.execute(roles_stmt)
         roles_rows = roles_result.fetchall()
-        print(f"📊 Found {len(roles_rows)} roles for user {user_id}")
         
         roles = [
             {"id": str(row.id), "name": row.name, "description": row.description}
@@ -414,11 +396,9 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
         ]
         
         # Get user individual permissions
-        print(f"🔍 Querying permissions for user {user_id}...")
         perms_stmt = select(UserPerm.perm).where(UserPerm.user_id == user_id)
         perms_result = await db.execute(perms_stmt)
         perm_rows = perms_result.fetchall()
-        print(f"📊 Found {len(perm_rows)} individual permissions for user {user_id}")
         
         permissions = [row.perm for row in perm_rows]
         
@@ -439,16 +419,11 @@ async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
             "updated_at": str(user.updated_at) if user.updated_at else None
         }
         
-        print(f"✅ Returning user data for {user_id}: {len(roles)} roles, {len(permissions)} permissions")
         return result_data
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error in get_user_with_roles_permissions for user {user_id}: {str(e)}")
-        print(f"❌ Error type: {type(e).__name__}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error getting user roles/permissions: {str(e)}"
@@ -522,10 +497,8 @@ async def get_available_roles(db: AsyncSession):
     Get all available roles
     """
     try:
-        print("🔍 Querying available roles from perm_groups table...")
         result = await db.execute(select(PermGroups))
         roles = result.scalars().all()
-        print(f"📊 Found {len(roles)} roles in database")
         
         roles_data = []
         for role in roles:
@@ -535,16 +508,10 @@ async def get_available_roles(db: AsyncSession):
                 "description": role.description or ""
             }
             roles_data.append(role_data)
-            print(f"  - Role: {role_data}")
         
-        print(f"✅ Returning {len(roles_data)} roles")
         return roles_data
         
     except Exception as e:
-        print(f"❌ Error in get_available_roles: {str(e)}")
-        print(f"❌ Error type: {type(e).__name__}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error getting available roles: {str(e)}"
@@ -571,7 +538,6 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
     
     if data.avatar_url is not None and data.avatar_url != old_avatar_url:
         cleanup_old_avatar = True
-        print(f"🔄 Avatar change detected: '{old_avatar_url}' -> '{data.avatar_url}'")
     
     # Update basic fields
     if data.username:
@@ -655,15 +621,9 @@ async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdat
                 full_old_path = os.path.join(upload_service.base_upload_dir, old_file_path)
                 
                 if os.path.exists(full_old_path):
-                    success = upload_service.delete_file(full_old_path)
-                    if success:
-                        print(f"✅ Old avatar deleted: {full_old_path}")
-                    else:
-                        print(f"⚠️ Failed to delete old avatar: {full_old_path}")
-                else:
-                    print(f"⚠️ Old avatar file not found: {full_old_path}")
+                    upload_service.delete_file(full_old_path)
         except Exception as e:
-            print(f"⚠️ Error cleaning up old avatar: {str(e)}")
+            pass
             # Don't fail the update if cleanup fails
     
     return user
@@ -697,15 +657,9 @@ async def delete_user(user_perms: list[str], user_id: str, db: AsyncSession):
                 full_path = os.path.join(upload_service.base_upload_dir, file_path)
                 
                 if os.path.exists(full_path):
-                    success = upload_service.delete_file(full_path)
-                    if success:
-                        print(f"✅ Avatar deleted with user: {full_path}")
-                    else:
-                        print(f"⚠️ Failed to delete avatar: {full_path}")
-                else:
-                    print(f"⚠️ Avatar file not found: {full_path}")
+                    upload_service.delete_file(full_path)
         except Exception as e:
-            print(f"⚠️ Error cleaning up avatar on delete: {str(e)}")
+            pass
             # Don't fail the delete if cleanup fails
     
     return {"status": "success", "message": "User deleted successfully"}

@@ -23,28 +23,15 @@ async def get_companies(
     Get all companies with pagination and search
     """
     try:
-        print("=" * 60)
-        print("📥 GET COMPANIES REQUEST")
-        print(f"User ID: {user_id}")
-        print(f"Filters: {filters}")
-        
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print(f"User permissions: {perms}")
-        
         result = await company_service.get_all_companies(user_perms=perms, filters=filters, db=db)
-        print(f"✅ Success: Found {result.get('total', 0)} companies")
-        print("=" * 60)
         return result
     except PermissionError as e:
-        print(f"❌ Permission Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ Error: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)

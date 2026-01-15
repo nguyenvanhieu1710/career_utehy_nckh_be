@@ -26,19 +26,14 @@ async def create_category(user_perms: list[str], data: CategoryCreate, db: Async
             )
         
         # Create new category
-        print(f"🔧 Creating category with data: name='{data.name}', description='{data.description}', avatar_url='{data.avatar_url}'")
         new_category = Category(
             name=data.name,
             description=data.description,
             avatar_url=data.avatar_url
         )
-        print(f"🔧 Category instance created: {new_category}")
         db.add(new_category)
-        print("🔧 Category added to session, attempting commit...")
         await db.commit()
-        print("🔧 Commit successful, refreshing...")
         await db.refresh(new_category)
-        print(f"🔧 Category refreshed: {new_category.id}")
         
         return {
             "status": "success",
@@ -151,7 +146,6 @@ async def update_category(user_perms: list[str], category_id: str, data: Categor
     
     if data.avatar_url is not None and data.avatar_url != old_avatar_url:
         cleanup_old_avatar = True
-        print(f"🔄 Avatar change detected: '{old_avatar_url}' -> '{data.avatar_url}'")
     
     # Update fields
     if data.name:
@@ -173,15 +167,9 @@ async def update_category(user_perms: list[str], category_id: str, data: Categor
                 full_old_path = os.path.join(upload_service.base_upload_dir, old_file_path)
                 
                 if os.path.exists(full_old_path):
-                    success = upload_service.delete_file(full_old_path)
-                    if success:
-                        print(f"✅ Old avatar deleted: {full_old_path}")
-                    else:
-                        print(f"⚠️ Failed to delete old avatar: {full_old_path}")
-                else:
-                    print(f"⚠️ Old avatar file not found: {full_old_path}")
+                    upload_service.delete_file(full_old_path)
         except Exception as e:
-            print(f"⚠️ Error cleaning up old avatar: {str(e)}")
+            pass
             # Don't fail the update if cleanup fails
     
     return {
@@ -222,15 +210,9 @@ async def delete_category(user_perms: list[str], category_id: str, db: AsyncSess
                 full_path = os.path.join(upload_service.base_upload_dir, file_path)
                 
                 if os.path.exists(full_path):
-                    success = upload_service.delete_file(full_path)
-                    if success:
-                        print(f"✅ Avatar deleted with category: {full_path}")
-                    else:
-                        print(f"⚠️ Failed to delete avatar: {full_path}")
-                else:
-                    print(f"⚠️ Avatar file not found: {full_path}")
+                    upload_service.delete_file(full_path)
         except Exception as e:
-            print(f"⚠️ Error cleaning up avatar on delete: {str(e)}")
+            pass
             # Don't fail the delete if cleanup fails
     
     return {
@@ -274,8 +256,6 @@ async def get_public_categories(limit: int, db: AsyncSession):
     Returns only basic information for active categories
     """
     try:
-        print(f"🔍 Getting public categories with limit: {limit}")
-        
         # Query only active categories
         stmt = select(Category).where(
             (Category.action_status == "active") | (Category.action_status.is_(None))
@@ -296,11 +276,9 @@ async def get_public_categories(limit: int, db: AsyncSession):
             }
             public_categories.append(public_category)
         
-        print(f"✅ Found {len(public_categories)} public categories")
         return public_categories
         
     except Exception as e:
-        print(f"❌ Error in get_public_categories: {str(e)}")
         raise e
 
 
@@ -310,8 +288,6 @@ async def get_public_category_by_id(category_id: str, db: AsyncSession):
     Returns category details if active
     """
     try:
-        print(f"🔍 Getting public category detail: {category_id}")
-        
         # Query only active category
         stmt = select(Category).where(
             (Category.id == category_id) & 
@@ -322,7 +298,6 @@ async def get_public_category_by_id(category_id: str, db: AsyncSession):
         category = result.scalar_one_or_none()
         
         if not category:
-            print(f"❌ Category not found or not active: {category_id}")
             return None
         
         # Convert to public format
@@ -334,9 +309,7 @@ async def get_public_category_by_id(category_id: str, db: AsyncSession):
             "created_at": str(category.created_at) if category.created_at else None
         }
         
-        print(f"✅ Found public category: {category.name}")
         return public_category
         
     except Exception as e:
-        print(f"❌ Error in get_public_category_by_id: {str(e)}")
         raise e
