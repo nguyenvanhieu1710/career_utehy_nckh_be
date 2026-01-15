@@ -68,6 +68,10 @@ def get_database() -> AsyncIOMotorDatabase:
         raise RuntimeError("MongoDB not initialized. Call connect_to_mongo() first.")
     return mongodb.database
 
+async def get_database_async() -> AsyncIOMotorDatabase:
+    """Get MongoDB database instance (async)"""
+    return get_database()
+
 # Health check function
 async def mongodb_health_check() -> bool:
     """Check if MongoDB is healthy"""

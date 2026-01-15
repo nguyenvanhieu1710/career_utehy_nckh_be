@@ -5,7 +5,7 @@ from app.api.v1 import email, payment, permission, auth, cv, category, job, comp
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 import os
-# from services.vector_service import build_faiss_index
+from app.services.vector_service import build_faiss_index
 from app.core.database import Base, engine, SessionLocal
 from app.core.mongodb import connect_to_mongo, close_mongo_connection, mongodb_health_check
 from app.models.base_model import BaseModel
@@ -54,11 +54,23 @@ async def startup():
         logger.error(f"❌ MongoDB failed: {e}")
         # Don't stop the app if MongoDB fails, just log the error
     
-    # LOAD FAISS KHI START APP
-    # build_faiss_index()
+    # Build FAISS index on startup
+    try:
+        from app.services.vector_service import load_faiss_index
+        
+        # Try to load from disk first (faster)
+        loaded = load_faiss_index()
+        
+        # If not found, build new index
+        if not loaded:
+            await build_faiss_index()
+            
+    except Exception as e:
+        logger.error(f"❌ FAISS index initialization failed: {e}")
+        # Don't stop the app if FAISS fails
 
     # Log API documentation URL
-    logger.info("📚 Swagger UI: http://localhost:8000/docs")
+    logger.info("Swagger UI: http://localhost:8000/docs")
     
     # Ensure uploads directory exists
     uploads_dir = "uploads"

@@ -33,6 +33,11 @@ docker-compose.override.yml
 uploads/*
 !uploads/.gitkeep
 
+# FAISS vector storage (can be regenerated)
+faiss_storage/
+*.index
+*.pkl
+
 # IDE
 .vscode/
 .idea/

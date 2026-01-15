@@ -420,23 +420,61 @@ async def get_jobs_by_status(user_perms: list[str], job_status: str, filters: ge
         "data": data
     }
 
-JOB_DATA = {
-    1: {
-        "title": "Backend Developer Intern",
-        "skills": ["Python", "FastAPI", "SQL"],
-        "description": "Tham gia phát triển hệ thống backend API"
-    }
-}
-
-
-def get_jobs(job_ids):
-    jobs = []
-    for job_id in job_ids:
-        if job_id in JOB_DATA:
-            job = JOB_DATA[job_id]
-            jobs.append(
-                f"- {job['title']}\n"
-                f"  Kỹ năng: {', '.join(job['skills'])}\n"
-                f"  Mô tả: {job['description']}"
-            )
-    return "\n".join(jobs)
+async def get_jobs(job_ids):
+    """
+    Fetch job details from MongoDB by job IDs
+    Returns formatted job context for LLM
+    """
+    from app.core.mongodb import get_database
+    
+    if not job_ids:
+        return []
+    
+    try:
+        db = get_database()
+        companies_collection = db["companies"]
+        
+        # Get all companies
+        companies = await companies_collection.find({}).to_list(length=None)
+        
+        jobs = []
+        for company in companies:
+            company_name = company.get("name", "Unknown Company")
+            company_jobs = company.get("jobs", [])
+            
+            for job in company_jobs:
+                if job.get("id") in job_ids:
+                    jobs.append({
+                        "id": job.get("id"),
+                        "title": job.get("title", ""),
+                        "company": company_name,
+                        "description": job.get("description", ""),
+                        "skills": job.get("skills", []),
+                        "location": job.get("location", ""),
+                        "salary": job.get("salaryDisplay", ""),
+                        "requirements": job.get("requirements", [])
+                    })
+        
+        # Format jobs for LLM context
+        formatted_jobs = []
+        for job in jobs:
+            skills_str = ", ".join(job['skills']) if isinstance(job['skills'], list) else str(job['skills'])
+            requirements_str = "\n  ".join(job['requirements'][:2]) if isinstance(job['requirements'], list) else str(job['requirements'])[:200]
+            
+            formatted_jobs.append({
+                "title": job['title'],
+                "company": job['company'],
+                "location": job['location'],
+                "salary": job['salary'],
+                "skills": skills_str,
+                "description": job['description'][:300] if job['description'] else "",
+                "requirements": requirements_str
+            })
+        
+        return formatted_jobs
+        
+    except Exception as e:
+        print(f"Error in get_jobs: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
