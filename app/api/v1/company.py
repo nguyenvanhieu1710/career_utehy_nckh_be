@@ -161,3 +161,35 @@ async def delete_company(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+# RESTful endpoint for company jobs (MongoDB)
+@router.get("/{company_id}/jobs")
+async def get_company_jobs(
+    company_id: str,
+    status: str = None,
+    limit: int = 10
+):
+    """
+    Get jobs for a specific company (RESTful endpoint)
+    
+    GET /api/v1/company/{company_id}/jobs
+    GET /api/v1/company/{company_id}/jobs?status=active&limit=20
+    """
+    from app.services.job_mongo_service import job_mongo_service
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        jobs = await job_mongo_service.get_jobs_by_company(company_id, status, limit)
+        return {
+            "data": jobs,
+            "total": len(jobs)
+        }
+    except Exception as e:
+        logger.error(f"Error getting jobs for company {company_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get company jobs"
+        )

@@ -146,7 +146,7 @@ class JobSearchSchema(BaseModel):
     salary_max: Optional[int] = Field(None, ge=0)
     remote_allowed: Optional[bool] = None
     featured: Optional[bool] = None
-    status: Optional[JobStatus] = JobStatus.ACTIVE
+    status: Optional[JobStatus] = None  # Changed: No default value
     
     # Pagination
     page: int = Field(1, ge=1)

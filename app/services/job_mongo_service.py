@@ -1,267 +1,284 @@
 """
 Job Service for MongoDB operations
+Query jobs from companies collection (nested structure)
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
-from beanie import PydanticObjectId
-from beanie.operators import RegEx, In, And, Or
-from app.models.mongo.job import Job, JobStatus, JobType, ExperienceLevel
+from bson import ObjectId
+from app.core.mongodb import get_database
 from app.schemas.job_mongo import JobCreateSchema, JobUpdateSchema, JobSearchSchema
 import logging
 
 logger = logging.getLogger(__name__)
 
+
+def convert_objectid_to_str(data: Any) -> Any:
+    """Recursively convert ObjectId to string in nested structures"""
+    if isinstance(data, ObjectId):
+        return str(data)
+    elif isinstance(data, dict):
+        return {key: convert_objectid_to_str(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [convert_objectid_to_str(item) for item in data]
+    elif isinstance(data, datetime):
+        return data.isoformat()
+    return data
+
 class JobMongoService:
-    """Service for handling job operations in MongoDB"""
+    """Service for handling job operations in MongoDB (companies collection)"""
     
     @staticmethod
-    async def create_job(job_data: JobCreateSchema) -> Job:
-        """Create a new job"""
+    async def get_all_jobs_from_companies() -> List[Dict[str, Any]]:
+        """Get all jobs from companies collection (nested structure)"""
         try:
-            job = Job(**job_data.dict())
-            job.published_at = datetime.utcnow() if job.status == JobStatus.ACTIVE else None
-            await job.insert()
-            logger.info(f"Created job: {job.id}")
-            return job
-        except Exception as e:
-            logger.error(f"Failed to create job: {e}")
-            raise
-    
-    @staticmethod
-    async def get_job_by_id(job_id: str) -> Optional[Job]:
-        """Get job by ID"""
-        try:
-            if not PydanticObjectId.is_valid(job_id):
-                return None
-            return await Job.get(PydanticObjectId(job_id))
-        except Exception as e:
-            logger.error(f"Failed to get job {job_id}: {e}")
-            return None
-    
-    @staticmethod
-    async def update_job(job_id: str, job_data: JobUpdateSchema) -> Optional[Job]:
-        """Update job"""
-        try:
-            if not PydanticObjectId.is_valid(job_id):
-                return None
+            db = get_database()
+            companies_collection = db["companies"]
             
-            job = await Job.get(PydanticObjectId(job_id))
-            if not job:
-                return None
+            # Get all companies
+            companies = await companies_collection.find({}).to_list(length=None)
             
-            # Update fields
-            update_data = job_data.dict(exclude_unset=True)
-            if update_data:
-                update_data["updated_at"] = datetime.utcnow()
+            all_jobs = []
+            for company in companies:
+                company_name = company.get("name", "Unknown Company")
+                company_id = str(company.get("_id", ""))
+                company_jobs = company.get("jobs", [])
                 
-                # Handle status change to active
-                if "status" in update_data and update_data["status"] == JobStatus.ACTIVE:
-                    if not job.published_at:
-                        update_data["published_at"] = datetime.utcnow()
-                
-                await job.update({"$set": update_data})
-                await job.reload()
+                for job in company_jobs:
+                    # Convert ObjectId and add company info
+                    job_dict = convert_objectid_to_str(job)
+                    job_dict["company_name"] = company_name
+                    job_dict["company_id"] = company_id
+                    all_jobs.append(job_dict)
             
-            logger.info(f"Updated job: {job_id}")
-            return job
+            return all_jobs
         except Exception as e:
-            logger.error(f"Failed to update job {job_id}: {e}")
+            logger.error(f"Failed to get all jobs: {e}")
             raise
     
     @staticmethod
-    async def delete_job(job_id: str) -> bool:
-        """Delete job"""
-        try:
-            if not PydanticObjectId.is_valid(job_id):
-                return False
-            
-            job = await Job.get(PydanticObjectId(job_id))
-            if not job:
-                return False
-            
-            await job.delete()
-            logger.info(f"Deleted job: {job_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete job {job_id}: {e}")
-            raise
-    
-    @staticmethod
-    async def search_jobs(search_params: JobSearchSchema) -> Tuple[List[Job], int]:
+    async def search_jobs(search_params: JobSearchSchema) -> Tuple[List[Dict[str, Any]], int]:
         """Search jobs with filters and pagination"""
         try:
-            # Build query conditions
-            conditions = []
+            # Get all jobs first
+            all_jobs = await JobMongoService.get_all_jobs_from_companies()
             
-            # Status filter
-            if search_params.status:
-                conditions.append(Job.status == search_params.status)
+            # Apply filters
+            filtered_jobs = []
             
-            # Text search
-            if search_params.query:
-                conditions.append(
-                    Or(
-                        RegEx(Job.title, search_params.query, "i"),
-                        RegEx(Job.description, search_params.query, "i")
-                    )
-                )
+            for job in all_jobs:
+                # Text search in title/description
+                if search_params.query:
+                    query_lower = search_params.query.lower()
+                    title = str(job.get("title", "")).lower()
+                    description = str(job.get("description", "")).lower()
+                    if query_lower not in title and query_lower not in description:
+                        continue
+                
+                # Location filter
+                if search_params.location:
+                    location_lower = search_params.location.lower()
+                    job_location = str(job.get("location", "")).lower()
+                    if location_lower not in job_location:
+                        continue
+                
+                # Job type filter
+                if search_params.job_type:
+                    if job.get("jobType") != search_params.job_type:
+                        continue
+                
+                # Experience level filter
+                if search_params.experience_level:
+                    if job.get("experienceLevel") != search_params.experience_level:
+                        continue
+                
+                # Company filter
+                if search_params.company_id:
+                    if job.get("company_id") != search_params.company_id:
+                        continue
+                
+                # Remote filter
+                if search_params.remote_allowed is not None:
+                    if job.get("remoteAllowed") != search_params.remote_allowed:
+                        continue
+                
+                # Featured filter
+                if search_params.featured is not None:
+                    if job.get("featured") != search_params.featured:
+                        continue
+                
+                # Salary filters
+                if search_params.salary_min:
+                    job_salary_min = job.get("salaryMin", 0)
+                    if job_salary_min < search_params.salary_min:
+                        continue
+                
+                if search_params.salary_max:
+                    job_salary_max = job.get("salaryMax", float('inf'))
+                    if job_salary_max > search_params.salary_max:
+                        continue
+                
+                filtered_jobs.append(job)
             
-            # Location filter
-            if search_params.location:
-                conditions.append(RegEx(Job.location, search_params.location, "i"))
-            
-            # Job type filter
-            if search_params.job_type:
-                conditions.append(Job.job_type == search_params.job_type)
-            
-            # Experience level filter
-            if search_params.experience_level:
-                conditions.append(Job.experience_level == search_params.experience_level)
-            
-            # Company filter
-            if search_params.company_id:
-                conditions.append(Job.company_id == search_params.company_id)
-            
-            # Category filter
-            if search_params.category_ids:
-                conditions.append(In(Job.category_ids, search_params.category_ids))
-            
-            # Salary filters
-            if search_params.salary_min:
-                conditions.append(Job.salary_min >= search_params.salary_min)
-            if search_params.salary_max:
-                conditions.append(Job.salary_max <= search_params.salary_max)
-            
-            # Remote filter
-            if search_params.remote_allowed is not None:
-                conditions.append(Job.remote_allowed == search_params.remote_allowed)
-            
-            # Featured filter
-            if search_params.featured is not None:
-                conditions.append(Job.featured == search_params.featured)
-            
-            # Build final query
-            if conditions:
-                query = Job.find(And(*conditions))
-            else:
-                query = Job.find()
-            
-            # Get total count
-            total = await query.count()
+            total = len(filtered_jobs)
             
             # Apply sorting
-            sort_field = getattr(Job, search_params.sort_by, Job.created_at)
-            if search_params.sort_order == "desc":
-                query = query.sort(-sort_field)
-            else:
-                query = query.sort(sort_field)
+            sort_field_map = {
+                "created_at": "createdAt",
+                "title": "title",
+                "salary_min": "salaryMin",
+                "salary_max": "salaryMax"
+            }
+            sort_field = sort_field_map.get(search_params.sort_by, "createdAt")
+            reverse = search_params.sort_order == "desc"
+            
+            try:
+                filtered_jobs.sort(
+                    key=lambda x: x.get(sort_field, ""),
+                    reverse=reverse
+                )
+            except Exception as e:
+                logger.warning(f"Sorting failed: {e}, using default order")
             
             # Apply pagination
-            skip = (search_params.page - 1) * search_params.size
-            jobs = await query.skip(skip).limit(search_params.size).to_list()
+            start = (search_params.page - 1) * search_params.size
+            end = start + search_params.size
+            paginated_jobs = filtered_jobs[start:end]
             
-            return jobs, total
+            return paginated_jobs, total
         except Exception as e:
             logger.error(f"Failed to search jobs: {e}")
             raise
     
     @staticmethod
-    async def get_jobs_by_company(company_id: str, status: Optional[JobStatus] = None, limit: int = 10) -> List[Job]:
+    async def get_job_by_id(job_id: str) -> Optional[Dict[str, Any]]:
+        """Get job by ID from companies collection"""
+        try:
+            all_jobs = await JobMongoService.get_all_jobs_from_companies()
+            
+            for job in all_jobs:
+                if job.get("id") == job_id:
+                    return job
+            
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get job {job_id}: {e}")
+            return None
+    
+    @staticmethod
+    async def get_jobs_by_company(company_id: str, status: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
         """Get jobs by company"""
         try:
-            conditions = [Job.company_id == company_id]
-            if status:
-                conditions.append(Job.status == status)
+            db = get_database()
+            companies_collection = db["companies"]
             
-            return await Job.find(And(*conditions)).limit(limit).to_list()
+            # Find company by ID
+            if ObjectId.is_valid(company_id):
+                company = await companies_collection.find_one({"_id": ObjectId(company_id)})
+            else:
+                company = await companies_collection.find_one({"id": company_id})
+            
+            if not company:
+                return []
+            
+            company_name = company.get("name", "Unknown Company")
+            company_jobs = company.get("jobs", [])
+            
+            # Add company info and filter by status if provided
+            jobs = []
+            for job in company_jobs:
+                if status and job.get("status") != status:
+                    continue
+                
+                # Convert ObjectId and add company info
+                job_dict = convert_objectid_to_str(job)
+                job_dict["company_name"] = company_name
+                job_dict["company_id"] = str(company.get("_id", ""))
+                jobs.append(job_dict)
+                
+                if len(jobs) >= limit:
+                    break
+            
+            return jobs
         except Exception as e:
             logger.error(f"Failed to get jobs for company {company_id}: {e}")
             raise
     
     @staticmethod
-    async def get_featured_jobs(limit: int = 10) -> List[Job]:
+    async def get_featured_jobs(limit: int = 10) -> List[Dict[str, Any]]:
         """Get featured jobs"""
         try:
-            return await Job.find(
-                Job.featured == True,
-                Job.status == JobStatus.ACTIVE
-            ).sort(-Job.created_at).limit(limit).to_list()
+            all_jobs = await JobMongoService.get_all_jobs_from_companies()
+            
+            # Filter featured jobs
+            featured_jobs = [job for job in all_jobs if job.get("featured") == True]
+            
+            # Sort by created date (newest first)
+            try:
+                featured_jobs.sort(
+                    key=lambda x: x.get("createdAt", ""),
+                    reverse=True
+                )
+            except:
+                pass
+            
+            return featured_jobs[:limit]
         except Exception as e:
             logger.error(f"Failed to get featured jobs: {e}")
             raise
     
     @staticmethod
-    async def get_recent_jobs(limit: int = 10) -> List[Job]:
+    async def get_recent_jobs(limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent jobs"""
         try:
-            return await Job.find(
-                Job.status == JobStatus.ACTIVE
-            ).sort(-Job.created_at).limit(limit).to_list()
+            all_jobs = await JobMongoService.get_all_jobs_from_companies()
+            
+            # Sort by created date (newest first)
+            try:
+                all_jobs.sort(
+                    key=lambda x: x.get("createdAt", ""),
+                    reverse=True
+                )
+            except:
+                pass
+            
+            return all_jobs[:limit]
         except Exception as e:
             logger.error(f"Failed to get recent jobs: {e}")
             raise
     
     @staticmethod
-    async def increment_job_views(job_id: str) -> bool:
-        """Increment job view count"""
-        try:
-            if not PydanticObjectId.is_valid(job_id):
-                return False
-            
-            job = await Job.get(PydanticObjectId(job_id))
-            if job:
-                await job.increment_views()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Failed to increment views for job {job_id}: {e}")
-            return False
-    
-    @staticmethod
-    async def increment_job_applications(job_id: str) -> bool:
-        """Increment job application count"""
-        try:
-            if not PydanticObjectId.is_valid(job_id):
-                return False
-            
-            job = await Job.get(PydanticObjectId(job_id))
-            if job:
-                await job.increment_applications()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"Failed to increment applications for job {job_id}: {e}")
-            return False
-    
-    @staticmethod
     async def get_job_stats() -> Dict[str, Any]:
         """Get job statistics"""
         try:
+            all_jobs = await JobMongoService.get_all_jobs_from_companies()
+            
+            total_jobs = len(all_jobs)
+            
             # Count by status
-            total_jobs = await Job.find().count()
-            active_jobs = await Job.find(Job.status == JobStatus.ACTIVE).count()
-            inactive_jobs = await Job.find(Job.status == JobStatus.INACTIVE).count()
-            expired_jobs = await Job.find(Job.status == JobStatus.EXPIRED).count()
-            draft_jobs = await Job.find(Job.status == JobStatus.DRAFT).count()
-            featured_jobs = await Job.find(Job.featured == True).count()
+            status_counts = {}
+            for job in all_jobs:
+                status = job.get("status", "unknown")
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # Count featured
+            featured_jobs = sum(1 for job in all_jobs if job.get("featured") == True)
             
             # Count by job type
             jobs_by_type = {}
-            for job_type in JobType:
-                count = await Job.find(Job.job_type == job_type).count()
-                jobs_by_type[job_type.value] = count
+            for job in all_jobs:
+                job_type = job.get("jobType", "unknown")
+                jobs_by_type[job_type] = jobs_by_type.get(job_type, 0) + 1
             
             # Count by experience level
             jobs_by_experience = {}
-            for exp_level in ExperienceLevel:
-                count = await Job.find(Job.experience_level == exp_level).count()
-                jobs_by_experience[exp_level.value] = count
+            for job in all_jobs:
+                exp_level = job.get("experienceLevel", "unknown")
+                jobs_by_experience[exp_level] = jobs_by_experience.get(exp_level, 0) + 1
             
-            # Top locations (simplified - in production use aggregation)
+            # Count by location (top 10)
             jobs_by_location = {}
-            jobs = await Job.find().limit(1000).to_list()
-            for job in jobs:
-                location = job.location
+            for job in all_jobs:
+                location = job.get("location", "unknown")
                 jobs_by_location[location] = jobs_by_location.get(location, 0) + 1
             
             # Sort and limit top 10 locations
@@ -269,10 +286,10 @@ class JobMongoService:
             
             return {
                 "total_jobs": total_jobs,
-                "active_jobs": active_jobs,
-                "inactive_jobs": inactive_jobs,
-                "expired_jobs": expired_jobs,
-                "draft_jobs": draft_jobs,
+                "active_jobs": status_counts.get("active", 0),
+                "inactive_jobs": status_counts.get("inactive", 0),
+                "expired_jobs": status_counts.get("expired", 0),
+                "draft_jobs": status_counts.get("draft", 0),
                 "featured_jobs": featured_jobs,
                 "jobs_by_type": jobs_by_type,
                 "jobs_by_experience": jobs_by_experience,
