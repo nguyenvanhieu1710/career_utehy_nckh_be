@@ -56,9 +56,11 @@ async def create(
             'user_id': str(new_user.id),
             'email': str(new_user.email)
         }
-        token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+        access_token = auth.create_access_token(data=payload)
+        refresh_token = auth.create_refresh_token(data=payload)
 
-        return {"access_token": token, 
+        return {"access_token": access_token,
+                "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "user_id": new_user.id,
                 "user_name": new_user.username,
@@ -85,9 +87,11 @@ async def login(
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
@@ -108,9 +112,11 @@ async def get_user_by_user_id_decode_token(
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
@@ -131,13 +137,54 @@ async def verify_success(
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
             "email": user.email}
+
+async def refresh_token(refresh_token: str, db: AsyncSession):
+    """
+    Generate new access token using refresh token
+    """
+    payload = auth.verify_refresh_token(refresh_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
+    
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token payload"
+        )
+    
+    # Verify user still exists and is active
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    # Generate new access token
+    new_payload = {
+        'user_id': str(user.id),
+        'email': str(user.email)
+    }
+    new_access_token = auth.create_access_token(data=new_payload)
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer"
+    }
 
 async def get_user_by_email(email:str, db: AsyncSession) -> UserSignin:
     result = await db.execute(select(Users).where(Users.email == email))

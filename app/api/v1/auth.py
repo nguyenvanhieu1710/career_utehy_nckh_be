@@ -5,7 +5,7 @@ from app.services import user_service, otp_service
 from app.schemas import get_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
-from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm, UserCreateByAdmin, UpdateUserRoles, Users
+from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm, UserCreateByAdmin, UpdateUserRoles, Users, RefreshTokenRequest
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import json
@@ -37,6 +37,23 @@ async def user_login(data: UserLogin, db: AsyncSession = Depends(get_db)):
                                        password=data.password,
                                        db=db)
     return result
+
+
+@router.post("/refresh-token")
+async def refresh_token(data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Generate new access token using refresh token
+    """
+    try:
+        result = await user_service.refresh_token(refresh_token=data.refresh_token, db=db)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.get("/verify")

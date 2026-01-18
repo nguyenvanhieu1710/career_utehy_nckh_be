@@ -78,6 +78,9 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 class UserUpdate(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
