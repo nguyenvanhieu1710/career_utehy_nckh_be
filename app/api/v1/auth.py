@@ -61,24 +61,6 @@ async def user_login(db: AsyncSession = Depends(get_db), user_id: str = Depends(
     result = await user_service.get_user_by_user_id_decode_token(id=user_id, db=db)
     return result
 
-@router.get("/get-by-email/{email}")
-async def user_login(email: str, db: AsyncSession = Depends(get_db)):
-    result = await user_service.get_user_by_email(email=email, db=db)
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
-    return result
-
-
-@router.patch("/update")
-async def user_login(data: UserUpdate, 
-                     db: AsyncSession = Depends(get_db),
-                     user_id: str = Depends(auth.verify_token_user)):
-    try:
-        result = await user_service.update_user(user_id=user_id, data=data, db=db)
-        return {'status':'success', 'data': result}
-    except HTTPException as ex:
-        return ex
-    
 
 @router.patch("/update-password")
 async def user_update(token: str, data: UserUpdate, 
@@ -121,48 +103,6 @@ async def change_password(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-
-@router.post("/add-role")
-async def user_add_role_endpoint(data: AddRole, 
-                     db: AsyncSession = Depends(get_db),
-                     user_id: str = Depends(auth.verify_token_user)):
-    try:
-        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        result = await user_service.user_add_role(user_perms=perms, data=data, db=db)
-        return result
-    except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
-        )
-    except HTTPException as ex:
-        raise ex
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-@router.get("/get-roles")
-async def user_update(user_id: str, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await user_service.get_user_roles(user_id=user_id, db=db)
-        return {'status':'success', 'data': result}
-    except HTTPException as ex:
-        return ex
-
-@router.post("/verify-otp")
-async def check_otp(otp: str, new_password: str, user: dict = Depends(auth.decode_token_user), db:AsyncSession = Depends(get_db)):
-    email = user.get("email")
-    user_id = user.get("user_id")
-    valid = await otp_service.verify_otp(email, otp)
-    if not valid:
-        raise HTTPException(status_code=400, detail="OTP invalid or expired!")
-    new_data = UserUpdate()
-    new_data.password = new_password
-    new_user = await user_service.update_user(user_id=user_id, data=new_data, db=db)
-    return {"status":"success","message": "Verify OTP successfully!", "data":new_user}
-
 
 @router.get("/me")
 async def get_current_user(
@@ -589,33 +529,4 @@ async def get_available_roles(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error in available-roles: {str(e)}"
-        )
-
-
-@router.get("/available-permissions")
-async def get_available_permissions(
-    db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(auth.verify_token_user)
-):
-    """
-    Get all available permissions
-    """
-    try:
-        # Check permissions
-        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        if "user.read" not in perms:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied"
-            )
-        
-        # Import permissions from core
-        from app.core import perms as core_perms
-        all_permissions = core_perms.get_all_permissions()
-        
-        return {"status": "success", "data": all_permissions}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
         )
