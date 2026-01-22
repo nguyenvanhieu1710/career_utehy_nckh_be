@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat, data_source, crawl_history
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 import os
@@ -13,6 +13,7 @@ from app.models.category import Category
 from app.models.company import Company
 from app.models.job import Job
 from app.models.crawler_config import CrawlerConfig
+from app.models.crawl_history import CrawlHistory
 from app.models.cv_profile import CVProfile
 from app.models.data_source import DataSource
 from app.models.job_favorite import JobFavorite
@@ -125,6 +126,8 @@ app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
 app.include_router(common.router, prefix="/api/v1/common", tags=["Common"])
 app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(data_source.router, prefix="/api/v1", tags=["Data Source"])
+app.include_router(crawl_history.router, prefix="/api/v1", tags=["Crawl History"])
 
 # Static file serving for uploads
 uploads_dir = "uploads"

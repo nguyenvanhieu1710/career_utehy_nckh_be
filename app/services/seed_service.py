@@ -46,7 +46,6 @@ async def create_admin_user():
                     "job.create", "job.read", "job.update", "job.delete",
                     "company.create", "company.read", "company.update", "company.delete",
                     "category.create", "category.read", "category.update", "category.delete",
-                    "admin.access"
                 ]
                 
                 for perm in permissions:
@@ -58,7 +57,7 @@ async def create_admin_user():
                     db.add(group_perm)
             
             # Create admin user
-            admin_password = "admin123"
+            admin_password = "123456"
             password_hash = hash_password(admin_password)
             
             admin_user = Users(

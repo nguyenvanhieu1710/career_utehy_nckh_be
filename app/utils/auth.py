@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import FastAPI, Depends, HTTPException, status
 from app.services import user_service
+from app.core.database import get_db
 load_dotenv()
 import os
 import logging
@@ -92,7 +93,10 @@ def decode_token_user(token: str = Depends(oauth2_scheme)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-async def get_current_user_permissions(token: str = Depends(oauth2_scheme)):
+async def get_current_user_permissions(
+    token: str = Depends(oauth2_scheme),
+    db = Depends(get_db)
+):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("user_id")
@@ -102,7 +106,7 @@ async def get_current_user_permissions(token: str = Depends(oauth2_scheme)):
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        perms = await user_service.get_user_permissions(user_id=user_id)
+        perms = await user_service.get_user_permissions(db=db, user_id=user_id)
         return perms
     except JWTError:
         raise HTTPException(

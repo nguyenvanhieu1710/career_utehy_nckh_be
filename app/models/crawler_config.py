@@ -8,10 +8,7 @@ class CrawlerConfig(BaseModel):
     
     source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'), nullable=False)
     frequency = Column(String(20))  # 'daily' | 'hourly' | 'weekly'
-    last_run_at = Column(DateTime)
-    next_run_at = Column(DateTime)
     status = Column(String(20))  # 'enabled' | 'disabled'
-    log_path = Column(String(255))
     
     # Relationships
     source = relationship('DataSource', back_populates='crawler_configs')
