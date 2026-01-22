@@ -2,56 +2,27 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 import logging
 
-from app.models.chat import ChatRequest, ChatResponse
-from app.services.vector_service import semantic_search, build_faiss_index, get_faiss_stats
-from app.services.job_service import get_jobs
-from app.services.llm_service import generate_answer, stream_answer
-from app.prompt_engine.prompt_builder import build_prompt
+from app.models.chat import ChatRequest
+from app.services.vector_service import build_faiss_index, get_faiss_stats
+from app.services.llm_service import stream_answer
 from app.services.question_validator import is_question_in_scope, get_rejection_message
+from app.services.intent_classifier import classify_intent, should_include_job_data
+from app.services.optimized_vector_service import semantic_search_optimized, get_jobs_optimized
+from app.prompt_engine.optimized_prompt_builder import build_optimized_prompt
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
-@router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """
-    Chat with AI (non-streaming)
-    Returns complete response at once
-    """
-    user_message = request.message
-    
-    # Step 0: Validate question scope
-    is_valid, reason = is_question_in_scope(user_message)
-    if not is_valid:
-        return ChatResponse(answer=get_rejection_message(reason))
-    
-    # Step 1: Vector search
-    job_ids = semantic_search(user_message)
-
-    # Step 2: Get job data
-    job_context = await get_jobs(job_ids)
-
-    # Step 3: Build prompt
-    prompt = build_prompt(user_message, job_context)
-
-    # Step 4: Call LLM
-    answer = generate_answer(prompt)
-
-    return ChatResponse(answer=answer)
-
 @router.post("/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Chat with streaming response (typing effect)
-    Returns text chunks as they are generated
+    Chat with streaming response - Optimized with Intent Classification
     """
     user_message = request.message
     
-    # Step 0: Validate question scope
+    # Step 1: Validate question scope
     is_valid, reason = is_question_in_scope(user_message)
     if not is_valid:
-        # Return rejection as plain text for streaming
         async def rejection_stream():
             yield get_rejection_message(reason)
         
@@ -60,16 +31,23 @@ async def chat_stream(request: ChatRequest):
             media_type="text/plain; charset=utf-8"
         )
     
-    # Step 1: Vector search
-    job_ids = semantic_search(user_message)
-
-    # Step 2: Get job data
-    job_context = await get_jobs(job_ids)
-
-    # Step 3: Build prompt
-    prompt = build_prompt(user_message, job_context)
-
-    # Step 4: Stream LLM response
+    # Step 2: Classify intent
+    intent, category = classify_intent(user_message)
+    # logger.info(f"Intent: {intent.value}, Category: {category.value if category else None}")
+    
+    # Step 3: Conditional job search
+    job_context = []
+    if should_include_job_data(intent):
+        job_ids = await semantic_search_optimized(user_message, category, top_k=3)
+        job_context = await get_jobs_optimized(job_ids, category)
+        # logger.info(f"Retrieved {len(job_context)} jobs for category {category.value if category else None}")
+    else:
+        logger.info("Skipping job search for consultation")
+    
+    # Step 4: Build optimized prompt
+    prompt = build_optimized_prompt(user_message, intent, job_context, category)
+    
+    # Step 5: Stream LLM response
     return StreamingResponse(
         stream_answer(prompt),
         media_type="text/plain; charset=utf-8"
@@ -77,19 +55,13 @@ async def chat_stream(request: ChatRequest):
 
 @router.get("/faiss-stats")
 def get_vector_stats():
-    """
-    Get FAISS index statistics
-    Shows: total vectors, memory usage, disk usage, job IDs
-    """
-    stats = get_faiss_stats()
-    return stats
+    """Get FAISS index statistics"""
+    return get_faiss_stats()
+
 
 @router.post("/rebuild-index")
 async def rebuild_index():
-    """
-    Manually rebuild FAISS index from database
-    Use this after adding/updating many jobs
-    """
+    """Rebuild FAISS index from database"""
     await build_faiss_index()
     stats = get_faiss_stats()
     return {
