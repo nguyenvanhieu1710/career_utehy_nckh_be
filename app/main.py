@@ -4,10 +4,13 @@ from fastapi.responses import FileResponse
 from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat, data_source, crawl_history
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware, create_rate_limit_middleware
+from app.middleware.rate_limit_config import rate_limit_config
 import os
 from app.services.vector_service import build_faiss_index
 from app.core.database import Base, engine, SessionLocal
 from app.core.mongodb import connect_to_mongo, close_mongo_connection, mongodb_health_check
+from app.core.redis_config import redis_manager, redis_health_check
 from app.models.base_model import BaseModel
 from app.models.category import Category
 from app.models.company import Company
@@ -21,7 +24,7 @@ from app.models.user import UserPerm, UserRole, Users
 from app.models.perm_groups import PermGroups, GroupPermission
 from app.models.job_status import JobStatus
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 import logging
 from app.core.logging_config import setup_logging
 
@@ -54,6 +57,22 @@ async def startup():
     except Exception as e:
         logger.error(f"❌ MongoDB failed: {e}")
         # Don't stop the app if MongoDB fails, just log the error
+    
+    # Initialize Redis
+    try:
+        await redis_manager.get_async_client()
+        # logger.info("✅ Redis connected and ready for rate limiting")
+    except Exception as e:
+        logger.error(f"❌ Redis connection failed: {e}")
+        logger.warning("⚠️  Rate limiting will be disabled")
+        # Don't stop the app if Redis fails
+    
+    # Initialize rate limiting
+    try:
+        from app.middleware.rate_limiter import rate_limiter
+        # logger.info("✅ Rate limiting system initialized")
+    except Exception as e:
+        logger.error(f"❌ Rate limiting initialization failed: {e}")
     
     # Build FAISS index on startup
     try:
@@ -96,6 +115,7 @@ async def startup():
 async def shutdown():
     """Cleanup on app shutdown"""
     await close_mongo_connection()
+    await redis_manager.close_connections()
     logger.info("Application shutdown complete")
 
 # origins = [
@@ -112,6 +132,19 @@ app.add_middleware(
 
 # Add static file security middleware
 app.add_middleware(StaticFileSecurityMiddleware, uploads_path="uploads")
+
+# Add rate limiting middleware
+rate_limit_middleware = create_rate_limit_middleware(
+    enabled=True,
+    skip_paths=[
+        "/docs", "/redoc", "/openapi.json", 
+        "/health", "/", "/favicon.ico",
+        "/uploads", "/static"
+    ]
+)
+app.add_middleware(RateLimitMiddleware, 
+                  enabled=True, 
+                  skip_paths=rate_limit_middleware.skip_paths)
 
 app.include_router(email.router, prefix="/api/v1/email", tags=["Email"])
 app.include_router(payment.router, prefix="/api/v1/payment", tags=["Payment"])
@@ -198,21 +231,46 @@ def root():
         "static_files": "/uploads",
         "databases": {
             "postgresql": "connected",
-            "mongodb": "connected" if mongodb_health_check else "disconnected"
+            "mongodb": "connected" if mongodb_health_check else "disconnected",
+            "redis": "connected" if redis_manager.is_connected() else "disconnected"
+        },
+        "services": {
+            "rate_limiting": "ready" if redis_manager.is_connected() else "disabled"
+        },
+        "rate_limiting": {
+            "enabled": redis_manager.is_connected(),
+            "middleware_active": True,
+            "storage": "redis" if redis_manager.is_connected() else "disabled",
+            "dev_mode": rate_limit_config.dev_mode,
+            "dev_multiplier": rate_limit_config.dev_multiplier
         }
     }
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for both databases"""
+    """Health check endpoint for all services"""
     postgres_healthy = True  # Assume healthy if app is running
     mongo_healthy = await mongodb_health_check()
+    redis_healthy = await redis_health_check()
+    
+    overall_status = "healthy" if all([postgres_healthy, mongo_healthy, redis_healthy]) else "degraded"
     
     return {
-        "status": "healthy" if postgres_healthy and mongo_healthy else "degraded",
+        "status": overall_status,
         "databases": {
             "postgresql": "healthy" if postgres_healthy else "unhealthy",
-            "mongodb": "healthy" if mongo_healthy else "unhealthy"
+            "mongodb": "healthy" if mongo_healthy else "unhealthy",
+            "redis": "healthy" if redis_healthy else "unhealthy"
+        },
+        "services": {
+            "rate_limiting": "enabled" if redis_healthy else "disabled"
+        },
+        "rate_limiting": {
+            "enabled": redis_healthy,
+            "middleware_active": True,
+            "storage": "redis" if redis_healthy else "disabled",
+            "dev_mode": rate_limit_config.dev_mode,
+            "dev_multiplier": rate_limit_config.dev_multiplier
         },
         "timestamp": os.environ.get("TIMESTAMP", "unknown")
     }
