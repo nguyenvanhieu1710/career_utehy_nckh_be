@@ -38,6 +38,10 @@ faiss_storage/
 *.index
 *.pkl
 
+# Alembic
+alembic/__pycache__/
+alembic/versions/__pycache__/
+
 # IDE
 .vscode/
 .idea/

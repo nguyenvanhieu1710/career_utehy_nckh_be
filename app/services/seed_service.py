@@ -57,7 +57,7 @@ async def create_admin_user():
                     db.add(group_perm)
             
             # Create admin user
-            admin_password = "123456"
+            admin_password = "admin"
             password_hash = hash_password(admin_password)
             
             admin_user = Users(
