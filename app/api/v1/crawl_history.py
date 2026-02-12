@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.services.crawl_history_service import CrawlHistoryService
+from app.services.crawler_config_service import CrawlerConfigService
 from app.utils.auth import get_current_user_permissions
 import logging
 
@@ -53,6 +54,33 @@ class CrawlStatisticsResponse(BaseModel):
     total_jobs_updated: int
     avg_duration_seconds: float
     last_crawl: Optional[str]
+
+# Scheduler-related models
+class UpdateScheduleRequest(BaseModel):
+    frequency: Optional[str] = Field(None, description="Frequency: hourly, daily, weekly")
+    cron_expression: Optional[str] = Field(None, description="Custom cron expression")
+    timezone: str = Field("UTC", description="Timezone for scheduling")
+    status: Optional[str] = Field(None, description="enabled or disabled")
+
+class ScheduleResponse(BaseModel):
+    source_id: str
+    frequency: str
+    cron_expression: str
+    timezone: str
+    status: str
+    last_scheduled_at: Optional[str]
+    is_scheduled: bool
+
+class ScheduledJobResponse(BaseModel):
+    id: str
+    name: str
+    source_id: str
+    next_run_time: Optional[str]
+    trigger: str
+
+class ScheduledJobsListResponse(BaseModel):
+    jobs: List[ScheduledJobResponse]
+    total: int
 
 @router.get("/crawl-histories", response_model=CrawlHistoryListResponse)
 async def get_crawl_histories(
@@ -274,6 +302,189 @@ async def cancel_source_crawls(
         
     except Exception as e:
         logger.error(f"Error cancelling crawls for source {source_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+# ==================== SCHEDULER ENDPOINTS ====================
+
+@router.put("/data-sources/{source_id}/schedule", response_model=ScheduleResponse)
+async def update_crawl_schedule(
+    source_id: str,
+    request: UpdateScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    permissions: List[str] = Depends(get_current_user_permissions)
+):
+    """Update crawl schedule for a data source"""
+    
+    # Check permissions
+    if "crawl_config.update" not in permissions and "*" not in permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to update crawl schedule"
+        )
+    
+    try:
+        # Update crawler config with auto-sync
+        config = await CrawlerConfigService.update_config(
+            db=db,
+            source_id=source_id,
+            frequency=request.frequency,
+            cron_expression=request.cron_expression,
+            timezone=request.timezone,
+            status=request.status
+        )
+        
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Crawler config not found"
+            )
+        
+        # Update scheduler
+        from app.core.scheduler import cron_scheduler
+        
+        if config.is_scheduled:
+            await cron_scheduler.schedule_crawl_job(
+                source_id=source_id,
+                cron_expression=config.cron_expression,
+                timezone=config.timezone
+            )
+        else:
+            await cron_scheduler.unschedule_crawl_job(source_id)
+        
+        return ScheduleResponse(
+            source_id=source_id,
+            frequency=config.frequency,
+            cron_expression=config.cron_expression,
+            timezone=config.timezone,
+            status=config.status,
+            last_scheduled_at=config.last_scheduled_at.isoformat() if config.last_scheduled_at else None,
+            is_scheduled=config.is_scheduled
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating schedule for source {source_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.get("/data-sources/{source_id}/schedule", response_model=ScheduleResponse)
+async def get_crawl_schedule(
+    source_id: str,
+    db: AsyncSession = Depends(get_db),
+    permissions: List[str] = Depends(get_current_user_permissions)
+):
+    """Get crawl schedule for a data source"""
+    
+    # Check permissions
+    if "crawl_config.view" not in permissions and "*" not in permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to view crawl schedule"
+        )
+    
+    try:
+        config = await CrawlerConfigService.get_config_by_source_id(db, source_id)
+        
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Crawler config not found"
+            )
+        
+        return ScheduleResponse(
+            source_id=source_id,
+            frequency=config.frequency or 'daily',
+            cron_expression=config.cron_expression or '0 2 * * *',
+            timezone=config.timezone or 'UTC',
+            status=config.status or 'disabled',
+            last_scheduled_at=config.last_scheduled_at.isoformat() if config.last_scheduled_at else None,
+            is_scheduled=config.is_scheduled
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting schedule for source {source_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+@router.post("/data-sources/{source_id}/trigger-crawl")
+async def trigger_crawl_now(
+    source_id: str,
+    db: AsyncSession = Depends(get_db),
+    permissions: List[str] = Depends(get_current_user_permissions)
+):
+    """Manually trigger a crawl job immediately"""
+    
+    # Check permissions
+    if "crawl.trigger" not in permissions and "*" not in permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to trigger crawl"
+        )
+    
+    try:
+        from app.core.scheduler import cron_scheduler
+        
+        result = await cron_scheduler.trigger_crawl_now(source_id)
+        
+        return {
+            "message": "Crawl triggered successfully",
+            "source_id": source_id,
+            "result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error triggering crawl for source {source_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to trigger crawl: {str(e)}"
+        )
+
+@router.get("/scheduled-jobs", response_model=ScheduledJobsListResponse)
+async def get_scheduled_jobs(
+    permissions: List[str] = Depends(get_current_user_permissions)
+):
+    """Get list of all scheduled crawl jobs"""
+    
+    # Check permissions
+    if "crawl_config.view" not in permissions and "*" not in permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions to view scheduled jobs"
+        )
+    
+    try:
+        from app.core.scheduler import cron_scheduler
+        
+        jobs = cron_scheduler.get_scheduled_jobs()
+        
+        scheduled_jobs = [
+            ScheduledJobResponse(
+                id=job['id'],
+                name=job['name'],
+                source_id=job['source_id'],
+                next_run_time=job['next_run_time'],
+                trigger=job['trigger']
+            )
+            for job in jobs
+        ]
+        
+        return ScheduledJobsListResponse(
+            jobs=scheduled_jobs,
+            total=len(scheduled_jobs)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduled jobs: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"

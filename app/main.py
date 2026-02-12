@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat, data_source, crawl_history
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat, data_source, crawl_history, scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware, create_rate_limit_middleware
@@ -53,26 +53,32 @@ async def startup():
     # Initialize MongoDB
     try:
         await connect_to_mongo()
-        # logger.info("✅ MongoDB connected")
+        logger.info("✅ MongoDB connected")
     except Exception as e:
         logger.error(f"❌ MongoDB failed: {e}")
-        # Don't stop the app if MongoDB fails, just log the error
     
     # Initialize Redis
     try:
         await redis_manager.get_async_client()
-        # logger.info("✅ Redis connected and ready for rate limiting")
+        logger.info("✅ Redis connected and ready for rate limiting")
     except Exception as e:
         logger.error(f"❌ Redis connection failed: {e}")
         logger.warning("⚠️  Rate limiting will be disabled")
-        # Don't stop the app if Redis fails
     
     # Initialize rate limiting
     try:
         from app.middleware.rate_limiter import rate_limiter
-        # logger.info("✅ Rate limiting system initialized")
+        logger.info("✅ Rate limiting system initialized")
     except Exception as e:
         logger.error(f"❌ Rate limiting initialization failed: {e}")
+    
+    # Initialize Cron Scheduler
+    try:
+        from app.core.scheduler import cron_scheduler
+        await cron_scheduler.start()
+        logger.info("✅ Cron Scheduler initialized")
+    except Exception as e:
+        logger.error(f"❌ Cron Scheduler initialization failed: {e}")
     
     # Build FAISS index on startup
     try:
@@ -114,6 +120,13 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     """Cleanup on app shutdown"""
+    # Stop cron scheduler
+    try:
+        from app.core.scheduler import cron_scheduler
+        await cron_scheduler.stop()
+    except Exception as e:
+        logger.error(f"❌ Failed to stop cron scheduler: {e}")
+    
     await close_mongo_connection()
     await redis_manager.close_connections()
     logger.info("Application shutdown complete")
@@ -161,6 +174,7 @@ app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(data_source.router, prefix="/api/v1", tags=["Data Source"])
 app.include_router(crawl_history.router, prefix="/api/v1", tags=["Crawl History"])
+app.include_router(scheduler.router, prefix="/api/v1", tags=["Scheduler"])
 
 # Static file serving for uploads
 uploads_dir = "uploads"
