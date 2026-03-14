@@ -1,13 +1,12 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, chat, data_source, crawl_history, scheduler
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, data_source, crawl_history, scheduler
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware, create_rate_limit_middleware
 from app.middleware.rate_limit_config import rate_limit_config
 import os
-from app.services.vector_service import build_faiss_index
 from app.core.database import Base, engine, SessionLocal
 from app.core.mongodb import connect_to_mongo, close_mongo_connection, mongodb_health_check
 from app.core.redis_config import redis_manager, redis_health_check
@@ -80,21 +79,6 @@ async def startup():
     except Exception as e:
         logger.error(f"❌ Cron Scheduler initialization failed: {e}")
     
-    # Build FAISS index on startup
-    try:
-        from app.services.vector_service import load_faiss_index
-        
-        # Try to load from disk first (faster)
-        loaded = load_faiss_index()
-        
-        # If not found, build new index
-        if not loaded:
-            await build_faiss_index()
-            
-    except Exception as e:
-        logger.error(f"❌ FAISS index initialization failed: {e}")
-        # Don't stop the app if FAISS fails
-
     # Log API documentation URL
     logger.info("Swagger UI: http://localhost:8000/docs")
     
@@ -171,7 +155,6 @@ app.include_router(company.router, prefix="/api/v1/company", tags=["Company"])
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["Upload"])
 app.include_router(common.router, prefix="/api/v1/common", tags=["Common"])
 app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
-app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])
 app.include_router(data_source.router, prefix="/api/v1", tags=["Data Source"])
 app.include_router(crawl_history.router, prefix="/api/v1", tags=["Crawl History"])
 app.include_router(scheduler.router, prefix="/api/v1", tags=["Scheduler"])
