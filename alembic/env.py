@@ -21,10 +21,16 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Set database URL from environment variables
-config.set_main_option(
-    "sqlalchemy.url",
-    f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST', 'localhost')}:{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_DATABASE')}"
-)
+database_url = os.getenv("DATABASE_URL")
+
+# If DATABASE_URL not provided, build from individual components
+if not database_url:
+    database_url = f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST', 'localhost')}:{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_DATABASE')}"
+else:
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 # Import all SQLAlchemy models for autogenerate support
 from app.models.base_model import BaseModel

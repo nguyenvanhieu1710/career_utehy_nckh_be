@@ -46,8 +46,13 @@ async def get_db():
 @app.on_event("startup")
 async def startup():
     # Initialize PostgreSQL
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ PostgreSQL connected")
+    except Exception as e:
+        logger.error(f"❌ PostgreSQL connection failed: {e}")
+        raise
     
     # Initialize MongoDB
     try:
