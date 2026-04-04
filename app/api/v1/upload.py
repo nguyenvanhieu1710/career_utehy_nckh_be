@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
-from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import os
-from pathlib import Path
 
 from app.core.database import SessionLocal
 from app.services import user_service
@@ -188,74 +186,6 @@ async def delete_file(
         )
 
 
-@router.get("/serve/{file_path:path}")
-async def serve_file(
-    file_path: str,
-    db: AsyncSession = Depends(get_db),
-    user_id: Optional[str] = Depends(auth.verify_token_user_optional)  # Optional auth for public files
-):
-    """
-    Serve uploaded files (static file serving)
-    
-    - **file_path**: Relative path from uploads directory
-    
-    Returns the actual file for display/download
-    """
-    try:
-        # Construct full path
-        full_path = os.path.join(upload_service.base_upload_dir, file_path)
-        
-        # Security check: ensure path is within uploads directory
-        uploads_dir = os.path.abspath(upload_service.base_upload_dir)
-        requested_path = os.path.abspath(full_path)
-        
-        if not requested_path.startswith(uploads_dir):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
-            )
-        
-        # Check if file exists
-        if not os.path.exists(full_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
-            )
-        
-        # Check if it's actually a file (not directory)
-        if not os.path.isfile(full_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Not a file"
-            )
-        
-        # Get file extension for media type
-        file_extension = Path(full_path).suffix.lower()
-        media_type_map = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.gif': 'image/gif',
-            '.webp': 'image/webp'
-        }
-        
-        media_type = media_type_map.get(file_extension, 'application/octet-stream')
-        
-        return FileResponse(
-            path=full_path,
-            media_type=media_type,
-            filename=os.path.basename(full_path)
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to serve file: {str(e)}"
-        )
-
-
 @router.get("/config", response_model=UploadConfig)
 async def get_upload_config():
     """
@@ -284,32 +214,3 @@ async def get_upload_config():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get config: {str(e)}"
         )
-
-
-# Health check endpoint
-@router.get("/health")
-async def upload_health_check():
-    """
-    Health check for upload service
-    
-    Returns service status and upload directory info
-    """
-    try:
-        uploads_dir = upload_service.base_upload_dir
-        uploads_exists = os.path.exists(uploads_dir)
-        uploads_writable = os.access(uploads_dir, os.W_OK) if uploads_exists else False
-        
-        return {
-            "status": "healthy" if uploads_exists and uploads_writable else "unhealthy",
-            "uploads_directory": uploads_dir,
-            "directory_exists": uploads_exists,
-            "directory_writable": uploads_writable,
-            "max_file_size": f"{upload_service.MAX_FILE_SIZE // (1024*1024)}MB",
-            "allowed_types": list(upload_service.ALLOWED_EXTENSIONS)
-        }
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }

@@ -19,8 +19,32 @@ async def get_db():
 
 
 @router.get("/get-perms")
-async def blog_get():
-    return perms.get_all_permissions()
+async def get_perms(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    try:
+        # Check user permissions - only admin or users with permission management rights
+        user_perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        # Require admin or permission management access
+        if not ("*" in user_perms or "permission.read" in user_perms or "permission.*" in user_perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to view system permissions"
+            )
+        
+        return {
+            "status": "success",
+            "data": perms.get_all_permissions()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get permissions: {str(e)}"
+        )
 
 
 @router.post("/create")
@@ -44,11 +68,24 @@ async def create(id:str, db: AsyncSession = Depends(get_db), user_id: str = Depe
 @router.post("/get-roles")
 async def get_roles(
     filters: get_schema.GetSchema,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
 ):
     try:
+        # Check user permissions - only admin or users with role management rights
+        user_perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        # Require admin or role management access
+        if not ("*" in user_perms or "role.read" in user_perms or "role.*" in user_perms or "group.read" in user_perms or "group.*" in user_perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to view roles"
+            )
+        
         result = await roles_service.get(filters=filters, db=db)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

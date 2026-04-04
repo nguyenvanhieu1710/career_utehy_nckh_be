@@ -82,24 +82,6 @@ async def list_jobs(
         )
 
 
-@router.get("/{job_id}")
-async def get_job(job_id: str):
-    """
-    Get a single job by ID
-    
-    GET /api/v1/job-mongo/{job_id}
-    """
-    job = await job_mongo_service.get_job_by_id(job_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job with id '{job_id}' not found"
-        )
-    
-    return {
-        "data": job
-    }
-
 
 @router.get("/stats")
 async def get_statistics():
@@ -119,3 +101,22 @@ async def get_statistics():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get job statistics"
         )
+
+
+@router.get("/{job_id}")
+async def get_job(job_id: str):
+    """
+    Get a single job by ID
+    
+    GET /api/v1/job-mongo/{job_id}
+    """
+    job = await job_mongo_service.get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job with id '{job_id}' not found"
+        )
+    
+    return {
+        "data": job
+    }

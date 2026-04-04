@@ -13,3 +13,4 @@ class DataSource(BaseModel):
     # Relationships
     jobs = relationship('Job', back_populates='source')
     crawler_configs = relationship('CrawlerConfig', back_populates='source')
+    crawl_histories = relationship('CrawlHistory', back_populates='source', cascade='all, delete-orphan')
