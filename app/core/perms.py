@@ -13,7 +13,7 @@ def require_permission(perms: list[str] | str):
             # --- FULL ACCESS CHECK ---
             # Nếu user có "*" thì cho full quyền
             if "*" in user_perms:
-                return await func(*args, **kwargs)
+                return await func(*args, user_perms=user_perms, **kwargs)
 
             # --- NORMAL PERMISSION CHECK ---
             for perm in perms:
@@ -21,7 +21,7 @@ def require_permission(perms: list[str] | str):
                     perm in user_perms or
                     perm.split(".")[0] + ".*" in user_perms
                 ):
-                    return await func(*args, **kwargs)
+                    return await func(*args, user_perms=user_perms, **kwargs)
 
             raise PermissionError(f"Missing one of required permissions: {perms}")
 

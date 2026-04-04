@@ -68,7 +68,7 @@ async def cv_save(
 ):
     if not data.id:
         return await create_cv(data, user_id, db)
-    return await update_cv(data, db)
+    return await update_cv(data, user_id, db)
 
 async def get_cv_for_user(user_id: str, filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(cv_profile.CVProfile).where(cv_profile.CVProfile.user_id == user_id)

@@ -10,7 +10,7 @@ from sqlalchemy import func, desc, delete
 import math
 from app.core.perms import require_permission
 @require_permission(["group.create"])
-async def create(data: perm_groups.CreateGroup, db: AsyncSession):
+async def create(user_perms: list[str], data: perm_groups.CreateGroup, db: AsyncSession):
     try:
         new_group = perm_groups.PermGroups(
             name=data.name,
@@ -35,7 +35,7 @@ async def create(data: perm_groups.CreateGroup, db: AsyncSession):
             detail=f"Database error: {str(ex)}"
         )
 @require_permission(["group.update"])
-async def update(group_id: str, data: perm_groups.CreateGroup, db: AsyncSession):
+async def update(user_perms: list[str], group_id: str, data: perm_groups.CreateGroup, db: AsyncSession):
     try:
         result = await db.execute(select(perm_groups.PermGroups).where(perm_groups.PermGroups.id == group_id))
         group = result.scalars().first()
@@ -67,7 +67,7 @@ async def update(group_id: str, data: perm_groups.CreateGroup, db: AsyncSession)
             detail=f"Database error: {str(ex)}"
         )
 @require_permission(["group.delete"])
-async def delete_group(id: str, db: AsyncSession):
+async def delete_group(user_perms: list[str], id: str, db: AsyncSession):
     try:
         result = await db.execute(select(perm_groups.PermGroups).where(perm_groups.PermGroups.id == id))
         group = result.scalars().first()
@@ -99,7 +99,7 @@ async def get(filters: get_schema.GetSchema, db: AsyncSession):
     if filters.searchKeyword:
         keyword = f"%{filters.searchKeyword.strip()}%"
         stmt = stmt.where(
-            (perm_groups.PermGroups.name.ilike(keyword))
+            (perm_groups.PermGroups.name.ilike(keyword)) |
             (perm_groups.PermGroups.description.ilike(keyword))
         )
     page = filters.page if filters.page and filters.page > 0 else 1

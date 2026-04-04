@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, func, ForeignKey, UniqueConstraint, Date
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 from app.core.database import Base
 from sqlalchemy.dialects.postgresql import UUID
@@ -12,12 +12,14 @@ class Users(Base):
     __tablename__ = "users"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
     username = Column(String, index=False)
     fullname = Column(String, nullable=False)
-    birthday = Column(Date, nullable=True)
-    password_hash = Column(String, nullable=False)
+    birthday = Column(Date, nullable=True)    
     avatar_url = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
     unversity = Column(String, nullable=True)
     major = Column(String, nullable=True)
     graduation_year = Column(String, nullable=True)
@@ -58,17 +60,40 @@ class UserSignin(BaseModel):
     email: str
     username: str
     password: str
+    fullname: Optional[str] = None
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class UserCreateByAdmin(BaseModel):
+    email: str
+    username: str
+    password: str
+    fullname: str
+    role_ids: Optional[List[str]] = []
+    permissions: Optional[List[str]] = []
+    class Config:
+        from_attributes = True
 
 class UserLogin(BaseModel):
     email: str
     password: str
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 class UserUpdate(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
     password: Optional[str] = None
+    fullname: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
+    avatar_url: Optional[str] = None
+    action_status: Optional[str] = None
+    role_ids: Optional[List[str]] = None
+    permissions: Optional[List[str]] = None
 
 class AddPerm(BaseModel):
     user_id: str
@@ -77,5 +102,30 @@ class AddPerm(BaseModel):
 class AddRole(BaseModel):
     user_id: str
     group_id: str
+
+class UserWithRoles(BaseModel):
+    id: str
+    email: str
+    fullname: str
+    username: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    birthday: Optional[str] = None
+    gender: Optional[str] = None
+    avatar_url: Optional[str] = None
+    action_status: Optional[str] = None
+    roles: List[dict] = []  # [{"id": "...", "name": "Admin", "description": "..."}]
+    permissions: List[str] = []  # ["user.create", "user.update"]
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+class AvailableRole(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+
+class UpdateUserRoles(BaseModel):
+    role_ids: List[str] = []
+    permissions: List[str] = []
 
 

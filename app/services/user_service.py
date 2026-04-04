@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, delete
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from fastapi import Depends, HTTPException, status
@@ -16,7 +16,10 @@ from sqlalchemy.exc import IntegrityError
 import string
 import secrets
 import math
+import os
 from app.core.perms import require_permission
+from app.core.status import EntityStatus, is_valid_status, get_default_status
+from app.services.upload_service import upload_service
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -25,6 +28,10 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+def get_active_user_filter():
+    """Get filter condition for active (non-deleted) users"""
+    return (Users.action_status != EntityStatus.DELETED.value) | (Users.action_status.is_(None))
 
 
 async def create(
@@ -39,7 +46,8 @@ async def create(
         new_user = Users(email=email, 
                             username=username, 
                             password_hash=hash_password(password=password),
-                            fullname=fullname
+                            fullname=fullname,
+                            action_status=get_default_status()
                             )
         db.add(new_user)
         await db.commit()
@@ -48,9 +56,11 @@ async def create(
             'user_id': str(new_user.id),
             'email': str(new_user.email)
         }
-        token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+        access_token = auth.create_access_token(data=payload)
+        refresh_token = auth.create_refresh_token(data=payload)
 
-        return {"access_token": token, 
+        return {"access_token": access_token,
+                "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "user_id": new_user.id,
                 "user_name": new_user.username,
@@ -77,9 +87,11 @@ async def login(
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
@@ -100,14 +112,17 @@ async def get_user_by_user_id_decode_token(
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
             "fullname": user.fullname,
-            "email": user.email}
+            "email": user.email,
+            "avatar_url": user.avatar_url}
 
 async def verify_success(
         email: str,
@@ -116,20 +131,60 @@ async def verify_success(
     """
     result = await db.execute(select(Users).where(Users.email == email))
     user = result.scalars().first()
-    print(user)
     if not user:
         raise HTTPException(status_code=404, detail="User not found!")
     payload = {
         'user_id': str(user.id),
         'email': str(user.email)
     }
-    token = auth.create_access_token(data=payload, expires_delta=timedelta(days=15))
+    access_token = auth.create_access_token(data=payload)
+    refresh_token = auth.create_refresh_token(data=payload)
 
-    return {"access_token": token, 
+    return {"access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": user.id,
             "user_name": user.username,
             "email": user.email}
+
+async def refresh_token(refresh_token: str, db: AsyncSession):
+    """
+    Generate new access token using refresh token
+    """
+    payload = auth.verify_refresh_token(refresh_token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token"
+        )
+    
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token payload"
+        )
+    
+    # Verify user still exists and is active
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+    
+    # Generate new access token
+    new_payload = {
+        'user_id': str(user.id),
+        'email': str(user.email)
+    }
+    new_access_token = auth.create_access_token(data=new_payload)
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer"
+    }
 
 async def get_user_by_email(email:str, db: AsyncSession) -> UserSignin:
     result = await db.execute(select(Users).where(Users.email == email))
@@ -156,23 +211,12 @@ async def verify_password_user(email:str, password: str, db: AsyncSession) -> Us
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     return True
 
-
-
-async def verify_password_user(email:str, password: str, db: AsyncSession) -> UserSignin:
-    result = await db.execute(select(Users).where(Users.email == email))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(plain_password=password, hashed_password=user.password_hash):
-        raise HTTPException(status_code=400, detail="Incorrect email or password")
-    return True
-
 @require_permission(['user.update'])
-async def user_add_role(data: AddRole, db: AsyncSession):
+async def user_add_role(user_perms: list[str], data: AddRole, db: AsyncSession):
     try:
         new_item = UserRole(
             user_id=data.user_id,
-            group_id=data.user_id
+            group_id=data.group_id
         )
         db.add(new_item)
         await db.commit()
@@ -222,6 +266,36 @@ async def update_user(user_id:str, data: UserUpdate, db: AsyncSession):
     await db.commit()
     await db.refresh(user)
     del user.password_hash
+    return user
+
+
+async def change_password(user_id: str, current_password: str, new_password: str, db: AsyncSession):
+    """
+    Change password for logged-in user with current password verification
+    """
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Verify current password
+    if not verify_password(plain_password=current_password, hashed_password=user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mật khẩu hiện tại không đúng"
+        )
+    
+    # Update to new password
+    user.password_hash = hash_password(new_password)
+    await db.commit()
+    await db.refresh(user)
+    
+    # Remove sensitive data before returning
+    del user.password_hash
     return user    
 
 def get_email_username(email: str) -> str | None:
@@ -237,38 +311,64 @@ def generate_random_password(length: int = 12) -> str:
     return password
 
 async def get_user_roles(user_id: str, db: AsyncSession) -> list[str]:
-    stmt = select(UserRole).where(UserPerm.user_id == user_id)
-    
-    result_group_perms = await db.execute(stmt)
-    group_perms = set(result_group_perms.scalars().all())
-    return group_perms
+    stmt = (
+        select(PermGroups.id)
+        .join(UserRole, UserRole.group_id == PermGroups.id)
+        .where(UserRole.user_id == user_id)
+    )
+    result = await db.execute(stmt)
+    group_ids = [str(group_id) for group_id in result.scalars().all()]
+    return group_ids
 
 
 
 async def get_user_permissions(user_id: str, db: AsyncSession) -> list[str]:
-    stmt_user_perms = select(UserPerm.perm).where(UserPerm.user_id == user_id)
-    result_user_perms = await db.execute(stmt_user_perms)
-    direct_perms = set(result_user_perms.scalars().all())
+    try:
+        # Validate UUID format
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user ID format: {user_id}"
+            )
+        
+        # Get direct user permissions
+        stmt_user_perms = select(UserPerm.perm).where(UserPerm.user_id == user_id)
+        result_user_perms = await db.execute(stmt_user_perms)
+        direct_perms = set(result_user_perms.scalars().all())
 
-    stmt_group_perms = (
-        select(GroupPermission.perm)
-        .join(PermGroups, GroupPermission.group_id == PermGroups.id)
-        .join(UserRole, UserRole.group_id == PermGroups.id)
-        .where(UserRole.user_id == user_id)
-    )
-    result_group_perms = await db.execute(stmt_group_perms)
-    group_perms = set(result_group_perms.scalars().all())
+        # Get group permissions
+        stmt_group_perms = (
+            select(GroupPermission.perm)
+            .join(PermGroups, GroupPermission.group_id == PermGroups.id)
+            .join(UserRole, UserRole.group_id == PermGroups.id)
+            .where(UserRole.user_id == user_id)
+        )
+        result_group_perms = await db.execute(stmt_group_perms)
+        group_perms = set(result_group_perms.scalars().all())
 
-    all_perms = list(direct_perms.union(group_perms))
-    return all_perms
+        all_perms = list(direct_perms.union(group_perms))
+        return all_perms
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting user permissions: {str(e)}"
+        )
 
 
 @require_permission(["user.list"])
-async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
+async def get_all_users(user_perms: list[str], filters: get_schema.GetSchema, db: AsyncSession):
     base_stmt = select(Users)
+    
+    # Filter out deleted users (soft delete)
+    base_stmt = base_stmt.where(get_active_user_filter())
 
     if filters.id:
-        base_stmt = base_stmt.where(id == filters.id)
+        base_stmt = base_stmt.where(Users.id == filters.id)
 
     if filters.searchKeyword:
         keyword = f"%{filters.searchKeyword}%"
@@ -276,6 +376,14 @@ async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
             (Users.username.ilike(keyword)) |
             (Users.email.ilike(keyword))
         )
+    
+    # Filter by role if specified
+    if filters.role_id:
+        base_stmt = base_stmt.join(UserRole).where(UserRole.group_id == filters.role_id)
+    
+    # Filter by status if specified
+    if filters.status and filters.status != "all":
+        base_stmt = base_stmt.where(Users.action_status == filters.status)
 
     page = filters.page if filters.page and filters.page > 0 else 1
     row = min(filters.row if filters.row and filters.row > 0 else 10, 100)
@@ -294,3 +402,404 @@ async def get_all_users(filters: get_schema.GetSchema, db: AsyncSession):
         "row": row,
         "data": data
     }
+
+
+async def get_user_with_roles_permissions(user_id: str, db: AsyncSession):
+    """
+    Get user with their roles and permissions
+    """
+    try:
+        # Validate UUID format
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid UUID format: {user_id}"
+            )
+        
+        # Get user basic info
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Get user roles
+        roles_stmt = (
+            select(PermGroups.id, PermGroups.name, PermGroups.description)
+            .join(UserRole, UserRole.group_id == PermGroups.id)
+            .where(UserRole.user_id == user_id)
+        )
+        roles_result = await db.execute(roles_stmt)
+        roles_rows = roles_result.fetchall()
+        
+        roles = [
+            {"id": str(row.id), "name": row.name, "description": row.description}
+            for row in roles_rows
+        ]
+        
+        # Get user individual permissions
+        perms_stmt = select(UserPerm.perm).where(UserPerm.user_id == user_id)
+        perms_result = await db.execute(perms_stmt)
+        perm_rows = perms_result.fetchall()
+        
+        permissions = [row.perm for row in perm_rows]
+        
+        result_data = {
+            "id": str(user.id),
+            "email": user.email or "",
+            "fullname": user.fullname or "",
+            "username": user.username or "",
+            "phone": user.phone or "",
+            "address": user.address or "",
+            "birthday": str(user.birthday) if user.birthday else None,
+            "gender": user.gender or "",
+            "avatar_url": user.avatar_url or "",
+            "action_status": user.action_status or get_default_status(),
+            "roles": roles,
+            "permissions": permissions,
+            "created_at": str(user.created_at) if user.created_at else None,
+            "updated_at": str(user.updated_at) if user.updated_at else None
+        }
+        
+        return result_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting user roles/permissions: {str(e)}"
+        )
+
+
+@require_permission(["user.update"])
+async def update_user_roles_permissions(user_perms: list[str], user_id: str, data, db: AsyncSession):
+    """
+    Update user roles and permissions
+    """
+    try:
+        # Verify user exists
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Remove existing roles
+        await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
+        
+        # Remove existing individual permissions
+        await db.execute(delete(UserPerm).where(UserPerm.user_id == user_id))
+        
+        # Add new roles
+        if hasattr(data, 'role_ids') and data.role_ids:
+            for role_id in data.role_ids:
+                # Verify role exists
+                role_result = await db.execute(
+                    select(PermGroups).where(PermGroups.id == role_id)
+                )
+                if role_result.scalar_one_or_none():
+                    user_role = UserRole(
+                        user_id=user_id,
+                        group_id=role_id
+                    )
+                    db.add(user_role)
+        
+        # Add new individual permissions
+        if hasattr(data, 'permissions') and data.permissions:
+            for perm in data.permissions:
+                user_perm = UserPerm(
+                    user_id=user_id,
+                    perm=perm
+                )
+                db.add(user_perm)
+        
+        await db.commit()
+        
+        return {
+            "status": "success",
+            "message": "User roles and permissions updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+async def get_available_roles(db: AsyncSession):
+    """
+    Get all available roles
+    """
+    try:
+        result = await db.execute(select(PermGroups))
+        roles = result.scalars().all()
+        
+        roles_data = []
+        for role in roles:
+            role_data = {
+                "id": str(role.id),
+                "name": role.name or "",
+                "description": role.description or ""
+            }
+            roles_data.append(role_data)
+        
+        return roles_data
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error getting available roles: {str(e)}"
+        )
+
+
+@require_permission(["user.update"])
+async def update_user_by_id(user_perms: list[str], user_id: str, data: UserUpdate, db: AsyncSession):
+    result = await db.execute(select(Users).where(
+        (Users.id == user_id) & 
+        ((Users.action_status != "deleted") | (Users.action_status.is_(None)))
+    ))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Handle avatar cleanup if avatar_url is being changed
+    old_avatar_url = user.avatar_url
+    cleanup_old_avatar = False
+    
+    if data.avatar_url is not None and data.avatar_url != old_avatar_url:
+        cleanup_old_avatar = True
+    
+    # Update basic fields
+    if data.username:
+        user.username = data.username
+    if data.email:
+        user.email = data.email
+    if data.password:
+        user.password_hash = hash_password(data.password)
+    
+    # Update profile fields
+    if data.fullname:
+        user.fullname = data.fullname
+    if data.phone:
+        user.phone = data.phone
+    if data.address:
+        user.address = data.address
+    if data.birthday:
+        # Convert string to date object
+        try:
+            from datetime import datetime
+            user.birthday = datetime.strptime(data.birthday, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Expected YYYY-MM-DD"
+            )
+    if data.gender:
+        user.gender = data.gender
+    if data.avatar_url is not None:  # Allow empty string to clear avatar_url
+        user.avatar_url = data.avatar_url
+    
+    # Update status if provided
+    if data.action_status:
+        if is_valid_status(data.action_status):
+            user.action_status = data.action_status
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid status: {data.action_status}. Valid statuses are: {[s.value for s in EntityStatus]}"
+            )
+
+    # Update roles and permissions if provided
+    if data.role_ids is not None:
+        # Remove existing roles
+        await db.execute(delete(UserRole).where(UserRole.user_id == user_id))
+        
+        # Add new roles
+        for role_id in data.role_ids:
+            # Verify role exists
+            role_result = await db.execute(
+                select(PermGroups).where(PermGroups.id == role_id)
+            )
+            if role_result.scalar_one_or_none():
+                user_role = UserRole(
+                    user_id=user_id,
+                    group_id=role_id
+                )
+                db.add(user_role)
+
+    if data.permissions is not None:
+        # Remove existing individual permissions
+        await db.execute(delete(UserPerm).where(UserPerm.user_id == user_id))
+        
+        # Add new individual permissions
+        for perm in data.permissions:
+            user_perm = UserPerm(
+                user_id=user_id,
+                perm=perm
+            )
+            db.add(user_perm)
+
+    await db.commit()
+    await db.refresh(user)
+    
+    # Cleanup old avatar file after successful database update
+    if cleanup_old_avatar and old_avatar_url:
+        try:
+            # Extract file path from URL (remove /uploads/ prefix)
+            if old_avatar_url.startswith('/uploads/'):
+                old_file_path = old_avatar_url[9:]  # Remove '/uploads/' prefix
+                full_old_path = os.path.join(upload_service.base_upload_dir, old_file_path)
+                
+                if os.path.exists(full_old_path):
+                    upload_service.delete_file(full_old_path)
+        except Exception as e:
+            pass
+            # Don't fail the update if cleanup fails
+    
+    return user
+
+
+@require_permission(["user.delete"])
+async def delete_user(user_perms: list[str], user_id: str, db: AsyncSession):
+    result = await db.execute(select(Users).where(Users.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Store avatar URL for cleanup
+    avatar_url = user.avatar_url
+    
+    # Soft delete - change action_status to "deleted"
+    user.action_status = "deleted"
+    await db.commit()
+    await db.refresh(user)
+    
+    # Cleanup avatar file after successful soft delete
+    if avatar_url:
+        try:
+            # Extract file path from URL (remove /uploads/ prefix)
+            if avatar_url.startswith('/uploads/'):
+                file_path = avatar_url[9:]  # Remove '/uploads/' prefix
+                full_path = os.path.join(upload_service.base_upload_dir, file_path)
+                
+                if os.path.exists(full_path):
+                    upload_service.delete_file(full_path)
+        except Exception as e:
+            pass
+            # Don't fail the delete if cleanup fails
+    
+    return {"status": "success", "message": "User deleted successfully"}
+
+
+@require_permission(["user.read"])
+async def get_user_by_id(user_perms: list[str], user_id: str, db: AsyncSession):
+    result = await db.execute(select(Users).where(
+        (Users.id == user_id) & 
+        ((Users.action_status != "deleted") | (Users.action_status.is_(None)))
+    ))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    return user
+
+
+@require_permission(["user.create"])
+async def create_user_by_admin(user_perms: list[str], data, db: AsyncSession):
+    """
+    Admin creates a new user with permission check and role assignment
+    """
+    try:
+        # Check if email already exists
+        result = await db.execute(select(Users).where(Users.email == data.email))
+        existing_user = result.scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists"
+            )
+        
+        # Create new user
+        new_user = Users(
+            email=data.email, 
+            username=data.username, 
+            password_hash=hash_password(password=data.password),
+            fullname=data.fullname,
+            action_status=get_default_status()
+        )
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+        
+        # Assign roles if provided
+        if hasattr(data, 'role_ids') and data.role_ids:
+            for role_id in data.role_ids:
+                # Verify role exists
+                role_result = await db.execute(
+                    select(PermGroups).where(PermGroups.id == role_id)
+                )
+                if role_result.scalar_one_or_none():
+                    user_role = UserRole(
+                        user_id=new_user.id,
+                        group_id=role_id
+                    )
+                    db.add(user_role)
+        
+        # Assign individual permissions if provided
+        if hasattr(data, 'permissions') and data.permissions:
+            for perm in data.permissions:
+                user_perm = UserPerm(
+                    user_id=new_user.id,
+                    perm=perm
+                )
+                db.add(user_perm)
+        
+        await db.commit()
+        
+        # Remove password hash from response
+        del new_user.password_hash
+        
+        return {
+            "status": "success",
+            "message": "User created successfully with roles and permissions",
+            "data": new_user
+        }
+    except IntegrityError as err:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already used"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )

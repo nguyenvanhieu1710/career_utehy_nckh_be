@@ -1,19 +1,13 @@
-# Environment variables
-.env
-.env.local
-.env.production
-
 # Python
-venv/
-__pycache__/
+__pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
+env
 pip-log.txt
 pip-delete-this-directory.txt
-.tox/
+.tox
 .coverage
 .coverage.*
 .cache
@@ -26,17 +20,11 @@ coverage.xml
 .pytest_cache
 .hypothesis
 
-# Docker
-docker-compose.override.yml
-
-# Uploads
-uploads/*
-!uploads/.gitkeep
-
-# FAISS vector storage (can be regenerated)
-faiss_storage/
-*.index
-*.pkl
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
 
 # IDE
 .vscode/
@@ -53,3 +41,16 @@ faiss_storage/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation
+README.md
+*.md
+
+# Uploads (will be mounted as volume)
+uploads/*
+!uploads/.gitkeep

@@ -1,10 +1,11 @@
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, UploadFile, Response, Query, Depends, HTTPException, Form, status
+from sqlalchemy.future import select
 from app.services import user_service, otp_service
 from app.schemas import get_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
-from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm
+from app.models.user import UserSignin, UserLogin, UserUpdate, AddRole, AddPerm, UserCreateByAdmin, UpdateUserRoles, Users, RefreshTokenRequest
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 import json
@@ -38,6 +39,23 @@ async def user_login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     return result
 
 
+@router.post("/refresh-token")
+async def refresh_token(data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Generate new access token using refresh token
+    """
+    try:
+        result = await user_service.refresh_token(refresh_token=data.refresh_token, db=db)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @router.get("/verify")
 async def user_login(db: AsyncSession = Depends(get_db), user_id: str = Depends(auth.verify_token_user)):
     result = await user_service.get_user_by_user_id_decode_token(id=user_id, db=db)
@@ -67,22 +85,63 @@ async def user_update(token: str, data: UserUpdate,
                      db: AsyncSession = Depends(get_db)):
     try:
         user_payload = auth.verify_token(token=token)
-        print(user_payload)
         result = await user_service.update_user_by_email(email=user_payload["email"], data=data, db=db)
         return {'status':'success','detail': 'Đổi mật khẩu thành công', 'data': result}
     except HTTPException as ex:
         return ex
 
+
+@router.patch("/change-password")
+async def change_password(
+    current_password: str,
+    new_password: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Change password for logged-in user
+    Requires current password verification
+    """
+    try:
+        result = await user_service.change_password(
+            user_id=user_id,
+            current_password=current_password,
+            new_password=new_password,
+            db=db
+        )
+        return {
+            'status': 'success',
+            'detail': 'Đổi mật khẩu thành công',
+            'data': result
+        }
+    except HTTPException as ex:
+        raise ex
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
 @router.post("/add-role")
-async def user_update(data: AddRole, 
+async def user_add_role_endpoint(data: AddRole, 
                      db: AsyncSession = Depends(get_db),
                      user_id: str = Depends(auth.verify_token_user)):
     try:
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
         result = await user_service.user_add_role(user_perms=perms, data=data, db=db)
-        return {'status':'success', 'data': result}
+        return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except HTTPException as ex:
-        return ex
+        raise ex
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 @router.get("/get-roles")
 async def user_update(user_id: str, db: AsyncSession = Depends(get_db)):
@@ -105,6 +164,87 @@ async def check_otp(otp: str, new_password: str, user: dict = Depends(auth.decod
     return {"status":"success","message": "Verify OTP successfully!", "data":new_user}
 
 
+@router.get("/me")
+async def get_current_user(
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """
+    Get current user's profile without permission check
+    Users can always view their own profile
+    """
+    try:
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        return {"status": "success", "data": user}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.put("/me")
+async def update_current_user(
+        data: UserUpdate,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """
+    Update current user's profile without permission check
+    Users can always update their own profile
+    """
+    try:
+        result = await db.execute(select(Users).where(Users.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update profile fields
+        if data.fullname:
+            user.fullname = data.fullname
+        if data.phone:
+            user.phone = data.phone
+        if data.address:
+            user.address = data.address
+        if data.birthday:
+            # Convert string to date object
+            try:
+                from datetime import datetime
+                user.birthday = datetime.strptime(data.birthday, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid date format. Expected YYYY-MM-DD"
+                )
+        if data.gender:
+            user.gender = data.gender
+
+        await db.commit()
+        await db.refresh(user)
+        return {"status": "success", "data": user}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @router.post("/get-users")
 async def get_users(
         data: get_schema.GetSchema, 
@@ -113,10 +253,367 @@ async def get_users(
     ):
     try:
         perms = await user_service.get_user_permissions(user_id=user_id, db=db)
-        print("===================")
-        print(perms)
         result = await user_service.get_all_users(user_perms=perms, filters=data, db=db)
         return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/get-user/{target_user_id}")
+async def get_user_detail(
+        target_user_id: str,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
+        return {"status": "success", "data": result}
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.put("/update-user/{target_user_id}")
+async def update_user_admin(
+        target_user_id: str,
+        data: UserUpdate,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.update_user_by_id(user_perms=perms, user_id=target_user_id, data=data, db=db)
+        return {"status": "success", "data": result}
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/delete-user/{target_user_id}")
+async def delete_user_admin(
+        target_user_id: str,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.delete_user(user_perms=perms, user_id=target_user_id, db=db)
+        return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/create-user")
+async def create_user_admin(
+        data: UserCreateByAdmin,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.create_user_by_admin(user_perms=perms, data=data, db=db)
+        return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/upload-avatar/{target_user_id}")
+async def upload_user_avatar(
+    target_user_id: str,
+    file: UploadFile = Form(..., description="Avatar image file"),
+    optimize: bool = Form(True, description="Whether to optimize the uploaded image"),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Upload avatar for a specific user
+    
+    - **target_user_id**: ID of the user to update
+    - **file**: Avatar image file (jpg, jpeg, png, gif, webp)
+    - **optimize**: Whether to optimize image (resize + compress)
+    
+    Returns uploaded avatar information and updates user
+    """
+    try:
+        # Check user permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        # Check if target user exists
+        target_user = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Import upload service
+        from app.services.upload_service import upload_service
+        
+        # Upload avatar file
+        upload_result = await upload_service.upload_single_file(
+            file=file,
+            file_type="users",
+            optimize=optimize
+        )
+        
+        # Update user with new avatar URL
+        update_data = UserUpdate(avatar_url=upload_result['file_url'])
+        updated_user = await user_service.update_user_by_id(
+            user_perms=perms,
+            user_id=target_user_id,
+            data=update_data,
+            db=db
+        )
+        
+        return {
+            "status": "success",
+            "message": "User avatar uploaded successfully",
+            "avatar_info": upload_result,
+            "user": updated_user
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Avatar upload failed: {str(e)}"
+        )
+
+
+@router.delete("/remove-avatar/{target_user_id}")
+async def remove_user_avatar(
+    target_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Remove avatar from a specific user
+    
+    - **target_user_id**: ID of the user to update
+    
+    Returns success message and updates user
+    """
+    try:
+        # Check user permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        # Check if target user exists
+        target_user = await user_service.get_user_by_id(user_perms=perms, user_id=target_user_id, db=db)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update user to remove avatar (set to None/empty)
+        update_data = UserUpdate(avatar_url="")
+        updated_user = await user_service.update_user_by_id(
+            user_perms=perms,
+            user_id=target_user_id,
+            data=update_data,
+            db=db
+        )
+        
+        return {
+            "status": "success",
+            "message": "User avatar removed successfully",
+            "user": updated_user
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to remove avatar: {str(e)}"
+        )
+
+
+@router.get("/get-user-roles-permissions/{target_user_id}")
+async def get_user_roles_permissions(
+    target_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get user with their roles and permissions
+    """
+    try:
+        # Validate target_user_id format
+        try:
+            import uuid
+            uuid.UUID(target_user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid user ID format: {target_user_id}"
+            )
+        
+        # Check permissions
+        try:
+            perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        except Exception as perm_error:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error checking permissions: {str(perm_error)}"
+            )
+        
+        if "user.read" not in perms and "*" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: user.read required"
+            )
+        
+        # Get user roles and permissions
+        try:
+            result = await user_service.get_user_with_roles_permissions(user_id=target_user_id, db=db)
+            return {"status": "success", "data": result}
+        except Exception as get_error:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error getting user data: {str(get_error)}"
+            )
+            
+    except HTTPException:
+        raise
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.put("/update-user-roles/{target_user_id}")
+async def update_user_roles(
+    target_user_id: str,
+    data: UpdateUserRoles,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Update user roles and permissions
+    """
+    try:
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        result = await user_service.update_user_roles_permissions(
+            user_perms=perms, 
+            user_id=target_user_id, 
+            data=data, 
+            db=db
+        )
+        return result
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/available-roles")
+async def get_available_roles(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get all available roles
+    """
+    try:
+        # Check permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        
+        if "user.read" not in perms and "*" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: user.read required"
+            )
+        
+        result = await user_service.get_available_roles(db=db)
+        return {"status": "success", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error in available-roles: {str(e)}"
+        )
+
+
+@router.get("/available-permissions")
+async def get_available_permissions(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """
+    Get all available permissions
+    """
+    try:
+        # Check permissions
+        perms = await user_service.get_user_permissions(user_id=user_id, db=db)
+        if "user.read" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied"
+            )
+        
+        # Import permissions from core
+        from app.core import perms as core_perms
+        all_permissions = core_perms.get_all_permissions()
+        
+        return {"status": "success", "data": all_permissions}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

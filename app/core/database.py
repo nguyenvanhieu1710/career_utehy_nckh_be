@@ -13,7 +13,12 @@ DB_PORT = os.getenv("DB_PORT", "5432")
 
 DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_DATABASE}"
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+# echo=False: Tắt SQL query logs (chỉ log khi có lỗi)
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=False,
+    echo_pool=False
+)
 
 SessionLocal = sessionmaker(
     bind=engine,
