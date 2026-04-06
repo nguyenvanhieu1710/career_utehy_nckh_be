@@ -182,7 +182,7 @@ async def update_category(user_perms: list[str], category_id: str, data: Categor
 @require_permission(["category.delete"])
 async def delete_category(user_perms: list[str], category_id: str, db: AsyncSession):
     """
-    Soft delete category by ID with avatar cleanup
+    Hard delete category by ID with avatar cleanup
     """
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
@@ -196,12 +196,11 @@ async def delete_category(user_perms: list[str], category_id: str, db: AsyncSess
     # Store avatar URL for cleanup
     avatar_url = category.avatar_url
     
-    # Soft delete - change action_status to "deleted"
-    category.action_status = "deleted"
+    # Hard delete - remove record from database
+    await db.delete(category)
     await db.commit()
-    await db.refresh(category)
     
-    # Cleanup avatar file after successful soft delete
+    # Cleanup avatar file after successful delete
     if avatar_url:
         try:
             # Extract file path from URL (remove /uploads/ prefix)
