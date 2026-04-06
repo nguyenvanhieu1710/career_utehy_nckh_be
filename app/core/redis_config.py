@@ -15,10 +15,10 @@ class RedisConfig:
     """Redis configuration settings"""
     
     def __init__(self):
-        self.host = os.getenv("REDIS_HOST", "")
-        self.port = int(os.getenv("REDIS_PORT", ))
+        self.host = os.getenv("REDIS_HOST", "localhost")
+        self.port = int(os.getenv("REDIS_PORT", 6379))
         self.password = os.getenv("REDIS_PASSWORD", "")
-        self.username = os.getenv("REDIS_USERNAME", "")
+        self.username = os.getenv("REDIS_USERNAME", "default")
         self.db = int(os.getenv("REDIS_DB", 0))
         self.decode_responses = os.getenv("REDIS_DECODE_RESPONSES", "True").lower() == "true"
         self.max_connections = int(os.getenv("REDIS_MAX_CONNECTIONS", 20))

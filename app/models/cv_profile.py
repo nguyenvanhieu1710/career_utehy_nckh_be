@@ -15,6 +15,7 @@ class CVProfile(BaseModel):
     subtitle = Column(String(100), nullable=True)
     primary_color = Column(String(20), nullable=True)
     sections = Column(Text, nullable=False)
+    design_data = Column(Text, nullable=False)
     
     # Relationships
     user = relationship('Users', back_populates='cv_profiles')
@@ -26,3 +27,4 @@ class CVSave(BM):
     subtitle: Optional[str] = None
     primary_color: Optional[str] = None
     sections: Optional[str] = None
+    template_id: Optional[str] = None
