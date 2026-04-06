@@ -27,8 +27,8 @@ async def get_perms(
         # Check user permissions - only admin or users with permission management rights
         user_perms = await user_service.get_user_permissions(user_id=user_id, db=db)
         
-        # Require admin or permission management access
-        if not ("*" in user_perms or "permission.read" in user_perms or "permission.*" in user_perms):
+        # Require admin or role management access
+        if not ("*" in user_perms or "role.read" in user_perms or "role.*" in user_perms):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions to view system permissions"
@@ -76,7 +76,7 @@ async def get_roles(
         user_perms = await user_service.get_user_permissions(user_id=user_id, db=db)
         
         # Require admin or role management access
-        if not ("*" in user_perms or "role.read" in user_perms or "role.*" in user_perms or "group.read" in user_perms or "group.*" in user_perms):
+        if not ("*" in user_perms or "role.read" in user_perms or "role.*" in user_perms):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions to view roles"

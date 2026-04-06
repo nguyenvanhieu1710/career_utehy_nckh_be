@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import func, desc, delete
 import math
 from app.core.perms import require_permission
-@require_permission(["group.create"])
+@require_permission(["role.create"])
 async def create(user_perms: list[str], data: perm_groups.CreateGroup, db: AsyncSession):
     try:
         new_group = perm_groups.PermGroups(
@@ -34,7 +34,7 @@ async def create(user_perms: list[str], data: perm_groups.CreateGroup, db: Async
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(ex)}"
         )
-@require_permission(["group.update"])
+@require_permission(["role.update"])
 async def update(user_perms: list[str], group_id: str, data: perm_groups.CreateGroup, db: AsyncSession):
     try:
         result = await db.execute(select(perm_groups.PermGroups).where(perm_groups.PermGroups.id == group_id))
@@ -66,7 +66,7 @@ async def update(user_perms: list[str], group_id: str, data: perm_groups.CreateG
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(ex)}"
         )
-@require_permission(["group.delete"])
+@require_permission(["role.delete"])
 async def delete_group(user_perms: list[str], id: str, db: AsyncSession):
     try:
         result = await db.execute(select(perm_groups.PermGroups).where(perm_groups.PermGroups.id == id))
