@@ -16,19 +16,28 @@ import string
 import secrets
 import math
 
+from app.models import cv_template
+
 
 async def create_cv(
     data: cv_profile.CVSave,
     user_id: str,
     db: AsyncSession
 ):
+    if not data.template_id:
+        templates = await db.execute(select(cv_template.CVTemplate).limit(1))
+        template = templates.scalar_one_or_none()
+    else:
+        result = await db.execute(select(cv_template.CVTemplate).where(cv_template.CVTemplate.id == data.template_id))
+        template = result.scalar_one_or_none()
     new_item = cv_profile.CVProfile(
         name="New CV",
         user_id=user_id,
         title=data.title,
         subtitle=data.subtitle,
         primary_color=data.primary_color,
-        sections=data.sections
+        sections=data.sections,
+        design_data=template.design_data if template else None,
     )
 
     db.add(new_item)
