@@ -23,6 +23,7 @@ from app.models.user import UserPerm, UserRole, Users
 from app.models.perm_groups import PermGroups, GroupPermission
 from app.models.job_status import JobStatus
 from app.models.cv_template import CVTemplate
+from app.models.import_log import MinioImportLog
 
 from pydantic import BaseModel
 import logging

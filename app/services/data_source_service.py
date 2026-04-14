@@ -106,6 +106,7 @@ class DataSourceService:
                     "crawl_frequency": crawler_config.frequency if crawler_config else "daily",
                     "crawl_enabled": crawler_config.status == "enabled" if crawler_config else False,
                     "next_run_at": next_run_at.isoformat() if next_run_at else None,
+                    "crawler_payload": crawler_config.crawler_payload if crawler_config else None,
                 }
                 
                 enriched_data_sources.append(ds_dict)
@@ -128,7 +129,19 @@ class DataSourceService:
         try:
             query = select(DataSource).where(DataSource.id == data_source_id)
             result = await db.execute(query)
-            return result.scalar_one_or_none()
+            data_source = result.scalar_one_or_none()
+            
+            if data_source:
+                # Get crawler config info
+                crawler_config = await CrawlerConfigService.get_config_by_source_id(db, str(data_source.id))
+                if crawler_config:
+                    # Add config fields to the data_source object so they are serialized
+                    # Note: These are dynamic attributes for the response schema
+                    setattr(data_source, "crawl_frequency", crawler_config.frequency)
+                    setattr(data_source, "crawl_enabled", crawler_config.status == "enabled")
+                    setattr(data_source, "crawler_payload", crawler_config.crawler_payload)
+            
+            return data_source
         except Exception as e:
             logger.error(f"Error getting data source {data_source_id}: {str(e)}")
             raise e
@@ -141,7 +154,8 @@ class DataSourceService:
         status: str = "inactive",
         # Crawl config parameters
         crawl_frequency: str = "daily",
-        crawl_enabled: bool = True
+        crawl_enabled: bool = True,
+        crawler_payload: Optional[Dict[str, Any]] = None
     ) -> DataSource:
         """Create new data source with crawler config"""
         try:
@@ -162,7 +176,8 @@ class DataSourceService:
                 db=db,
                 source_id=str(data_source.id),
                 frequency=crawl_frequency,
-                status="enabled" if crawl_enabled else "disabled"
+                status="enabled" if crawl_enabled else "disabled",
+                crawler_payload=crawler_payload
             )
             
             logger.info(f"Created data source with config: {data_source.name}")
@@ -182,7 +197,8 @@ class DataSourceService:
         status: Optional[str] = None,
         # Crawl config parameters
         crawl_frequency: Optional[str] = None,
-        crawl_enabled: Optional[bool] = None
+        crawl_enabled: Optional[bool] = None,
+        crawler_payload: Optional[Dict[str, Any]] = None
     ) -> Optional[DataSource]:
         """Update data source and crawler config"""
         try:
@@ -207,7 +223,7 @@ class DataSourceService:
             await db.refresh(data_source)
             
             # Update crawler config if any crawl parameters provided
-            if any([crawl_frequency is not None, crawl_enabled is not None]):
+            if any([crawl_frequency is not None, crawl_enabled is not None, crawler_payload is not None]):
                 crawl_status = None
                 if crawl_enabled is not None:
                     crawl_status = "enabled" if crawl_enabled else "disabled"
@@ -216,7 +232,8 @@ class DataSourceService:
                     db=db,
                     source_id=data_source_id,
                     frequency=crawl_frequency,
-                    status=crawl_status
+                    status=crawl_status,
+                    crawler_payload=crawler_payload
                 )
             
             logger.info(f"Updated data source: {data_source.name}")

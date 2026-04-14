@@ -81,7 +81,8 @@ class CrawlerConfigService:
         frequency: str = "daily",
         status: str = "enabled",
         cron_expression: Optional[str] = None,
-        timezone: str = "UTC"
+        timezone: str = "UTC",
+        crawler_payload: Optional[Dict[str, Any]] = None
     ) -> CrawlerConfig:
         """Create new crawler config with auto-sync"""
         try:
@@ -96,6 +97,7 @@ class CrawlerConfigService:
                 status=status,
                 cron_expression=synced_cron,
                 timezone=timezone,
+                crawler_payload=crawler_payload,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
@@ -119,7 +121,8 @@ class CrawlerConfigService:
         frequency: Optional[str] = None,
         status: Optional[str] = None,
         cron_expression: Optional[str] = None,
-        timezone: Optional[str] = None
+        timezone: Optional[str] = None,
+        crawler_payload: Optional[Dict[str, Any]] = None
     ) -> Optional[CrawlerConfig]:
         """Update crawler config with auto-sync"""
         try:
@@ -147,6 +150,8 @@ class CrawlerConfigService:
                 config.status = status
             if timezone is not None:
                 config.timezone = timezone
+            if crawler_payload is not None:
+                config.crawler_payload = crawler_payload
             
             config.updated_at = datetime.utcnow()
             

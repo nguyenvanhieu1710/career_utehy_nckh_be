@@ -19,6 +19,7 @@ class DataSourceCreate(BaseModel):
     # Crawl config fields
     crawl_frequency: Optional[str] = Field("daily", pattern="^(hourly|daily|weekly)$", description="Crawl frequency")
     crawl_enabled: Optional[bool] = Field(True, description="Enable/disable crawling")
+    crawler_payload: Optional[Dict[str, Any]] = Field(None, description="Crawler specific configuration")
 
 class DataSourceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=3, max_length=100, description="Data source name")
@@ -27,6 +28,7 @@ class DataSourceUpdate(BaseModel):
     # Crawl config fields
     crawl_frequency: Optional[str] = Field(None, pattern="^(hourly|daily|weekly)$", description="Crawl frequency")
     crawl_enabled: Optional[bool] = Field(None, description="Enable/disable crawling")
+    crawler_payload: Optional[Dict[str, Any]] = Field(None, description="Crawler specific configuration")
 
 class DataSourceResponse(BaseModel):
     id: str
@@ -43,6 +45,7 @@ class DataSourceResponse(BaseModel):
     crawl_frequency: str
     crawl_enabled: bool
     next_run_at: Optional[str]
+    crawler_payload: Optional[Dict[str, Any]] = None
 
 class DataSourceListResponse(BaseModel):
     data: List[DataSourceResponse]
@@ -187,7 +190,8 @@ async def create_data_source(
             base_url=data_source_data.base_url,
             status=data_source_data.status or "inactive",
             crawl_frequency=data_source_data.crawl_frequency or "daily",
-            crawl_enabled=data_source_data.crawl_enabled if data_source_data.crawl_enabled is not None else True
+            crawl_enabled=data_source_data.crawl_enabled if data_source_data.crawl_enabled is not None else True,
+            crawler_payload=data_source_data.crawler_payload
         )
         
         return DataSourceResponse(
@@ -240,7 +244,8 @@ async def update_data_source(
             base_url=data_source_data.base_url,
             status=data_source_data.status,
             crawl_frequency=data_source_data.crawl_frequency,
-            crawl_enabled=data_source_data.crawl_enabled
+            crawl_enabled=data_source_data.crawl_enabled,
+            crawler_payload=data_source_data.crawler_payload
         )
         
         if not data_source:

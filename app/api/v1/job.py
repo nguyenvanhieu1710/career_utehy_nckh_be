@@ -1,12 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import SessionLocal
-from app.services import job_service, user_service, company_service
+from app.services import job_service, user_service, company_service, import_job_service
 from app.services.job_service import JobCreate, JobUpdate
 from app.schemas import get_schema
 from app.utils import auth
 
+from pydantic import BaseModel
+from typing import Optional, List
+
 router = APIRouter()
+
+class MinioImportRequest(BaseModel):
+    bucket: str
+    object_name: str
 
 async def get_db():
     async with SessionLocal() as session:
@@ -273,6 +280,27 @@ async def get_companies_dropdown(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e)
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.post("/import-minio")
+async def import_from_minio(
+    data: MinioImportRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Import jobs directly from MinIO via SDK
+    """
+    try:
+        result = await import_job_service.ImportJobService.import_from_minio(
+            db=db, 
+            bucket=data.bucket, 
+            object_name=data.object_name
+        )
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

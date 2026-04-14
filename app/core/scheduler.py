@@ -58,6 +58,17 @@ class CronScheduler:
             # Load active jobs from database
             await self.load_active_jobs()
             
+            # Register MinIO auto-import task (Every 30 mins)
+            self.scheduler.add_job(
+                func=self.execute_auto_import_from_minio,
+                trigger='interval',
+                minutes=30,
+                id='minio_auto_import',
+                name='Automatic import from MinIO stage3 folders',
+                replace_existing=True
+            )
+            logger.info("📅 Scheduled MinIO auto-import task (every 30 mins)")
+            
         except Exception as e:
             logger.error(f"❌ Failed to start scheduler: {e}")
             raise e
@@ -69,6 +80,20 @@ class CronScheduler:
             logger.info("🛑 Cron Scheduler stopped")
         except Exception as e:
             logger.error(f"❌ Failed to stop scheduler: {e}")
+    
+    async def execute_auto_import_from_minio(self):
+        """Periodic task to scan and import jobs from MinIO"""
+        logger.info("🔍 [Auto Import] Starting smart scan for MinIO objects...")
+        async with SessionLocal() as db:
+            from app.services.import_job_service import ImportJobService
+            try:
+                result = await ImportJobService.smart_scan_and_import(db)
+                if result.get("new_processed", 0) > 0:
+                    logger.info(f"✨ [Auto Import] Completed: {result}")
+                else:
+                    logger.info(f"ℹ️ [Auto Import] No new Stage 3 files found.")
+            except Exception as e:
+                logger.error(f"💣 [Auto Import] Task failed: {str(e)}")
     
     async def load_active_jobs(self):
         """Load all active crawler configs and schedule them"""
@@ -136,52 +161,59 @@ class CronScheduler:
             return False
     
     async def execute_crawl(self, source_id: str):
-        """Execute crawl by calling crawl-careers API"""
-        logger.info(f"🕷️ Starting crawl for source: {source_id}")
+        """Execute crawl by calling crawler-service API dynamically"""
+        logger.info(f"🕷️ Starting crawl task for configuration: {source_id}")
         
         try:
-            # Get source info to determine which API to call
             async with SessionLocal() as db:
-                from app.services.data_source_service import DataSourceService
+                from app.services.crawler_config_service import CrawlerConfigService
+                
+                # Fetch config including the new crawler_payload
+                config = await CrawlerConfigService.get_config_by_source_id(db, source_id)
+                if not config:
+                    raise Exception(f"Crawler config for source {source_id} not found")
                 
                 # Update last_scheduled_at
                 await CrawlerConfigService.update_last_scheduled(db, source_id)
                 
-                # Get source details
-                source = await DataSourceService.get_data_source_by_id(db, source_id)
-                if not source:
-                    raise Exception(f"Data source {source_id} not found")
+                payload = config.crawler_payload
+                if not payload:
+                    logger.warning(f"⚠️ No crawler_payload found for {source_id}, skipping.")
+                    return
                 
-                source_name = source.name.lower() if source.name else 'jobgo'
+            # CRAWLER API URL (default to localhost:8001 if not set)
+            crawler_url = os.getenv('CRAWLER_SERVICE_URL')
             
-            # Map source name to API endpoint and payload
-            api_config = self._get_api_config(source_name)
+            # Detect endpoint based on payload content
+            # Stage 1 use /push-job, Stage 2/3 use /trigger-next
+            stage = payload.get('stage') or payload.get('new_stage') or 1
+            endpoint = "/push-job" if stage == 1 else "/trigger-next"
             
-            # Call crawl-careers API
-            timeout = aiohttp.ClientTimeout(total=300)  # 5 minutes
+            # Call Crawler API
+            timeout = aiohttp.ClientTimeout(total=600)  # 10 minutes for long crawl tasks
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                url = f"{self.crawl_service_url}{api_config['endpoint']}"
+                url = f"{crawler_url}{endpoint}"
                 
-                logger.info(f"📡 Calling crawl API: {url} for source: {source_name}")
+                logger.info(f"📡 Calling Crawler API: {url} (Stage: {stage})")
                 
-                async with session.post(url, json=api_config['payload']) as response:
+                async with session.post(url, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
-                        logger.info(f"✅ Crawl completed for source {source_id} ({source_name}): {result}")
+                        logger.info(f"✅ Crawler accepted job: {result}")
                         return result
                     else:
                         error_text = await response.text()
-                        error_msg = f"Crawl API returned {response.status}: {error_text}"
-                        logger.error(f"❌ Crawl API failed for source {source_id}: {error_msg}")
+                        error_msg = f"Crawler API returned {response.status}: {error_text}"
+                        logger.error(f"❌ Crawler API failed: {error_msg}")
                         raise Exception(error_msg)
         
         except asyncio.TimeoutError:
-            error_msg = "Crawl request timed out"
-            logger.error(f"⏰ {error_msg} for source {source_id}")
+            error_msg = "Crawler request timed out"
+            logger.error(f"⏰ {error_msg}")
             raise Exception(error_msg)
         
         except Exception as e:
-            logger.error(f"❌ Crawl execution failed for source {source_id}: {e}")
+            logger.error(f"❌ Crawl execution failed: {e}")
             raise e
     
     def _get_api_config(self, source_name: str) -> dict:
