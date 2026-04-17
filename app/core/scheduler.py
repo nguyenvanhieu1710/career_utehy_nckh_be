@@ -184,19 +184,27 @@ class CronScheduler:
             # CRAWLER API URL (default to localhost:8001 if not set)
             crawler_url = os.getenv('CRAWLER_SERVICE_URL')
             
-            # Detect endpoint based on payload content
-            # Stage 1 use /push-job, Stage 2/3 use /trigger-next
-            stage = payload.get('stage') or payload.get('new_stage') or 1
-            endpoint = "/push-job" if stage == 1 else "/trigger-next"
+            # Use /push-job endpoint for all stages
+            endpoint = "/push-job"
+            stage = payload.get('stage', 1)
+            
+            # Ensure required fields for Crawler API
+            prepared_payload = payload.copy()
+            if 'stage' not in prepared_payload:
+                prepared_payload['stage'] = stage
+            
+            if 'url_web' not in prepared_payload:
+                # Use source's base_url if url_web is missing in payload
+                prepared_payload['url_web'] = config.base_url or ""
             
             # Call Crawler API
             timeout = aiohttp.ClientTimeout(total=600)  # 10 minutes for long crawl tasks
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"{crawler_url}{endpoint}"
                 
-                logger.info(f"📡 Calling Crawler API: {url} (Stage: {stage})")
+                logger.info(f"📡 Calling Crawler API: {url} (Stage: {prepared_payload.get('stage')})")
                 
-                async with session.post(url, json=payload) as response:
+                async with session.post(url, json=prepared_payload) as response:
                     if response.status == 200:
                         result = await response.json()
                         logger.info(f"✅ Crawler accepted job: {result}")

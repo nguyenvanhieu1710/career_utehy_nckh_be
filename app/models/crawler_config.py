@@ -12,7 +12,7 @@ class CrawlerConfig(BaseModel):
     cron_expression = Column(String(50))  # '0 * * * *'
     timezone = Column(String(50), default='UTC')  # Timezone for scheduling
     last_scheduled_at = Column(DateTime)  # Last time this job was scheduled    
-    crawler_payload = Column(JSONB) # Contains user_name, web_name, steps, repeat, link_key, etc.
+    crawler_payload = Column(JSONB) # Contains user_name, web_name, steps, repeat, folder_name, etc.
     
     # Relationships
     source = relationship('DataSource', back_populates='crawler_configs')
