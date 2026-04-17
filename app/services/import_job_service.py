@@ -201,7 +201,9 @@ class ImportJobService:
             # 2. Filter: Only get Stage 3 files and .json format
             candidate_files = [
                 obj for obj in objects 
-                if "_stage3_full_job_details_" in obj.object_name and obj.object_name.endswith(".json")
+                if "stage3" in obj.object_name.lower() and 
+                obj.object_name.endswith(".json") and 
+                not obj.is_dir
             ]
             
             logger.info(f"Scanning bucket {bucket}: Found {len(candidate_files)} potential Stage 3 files.")

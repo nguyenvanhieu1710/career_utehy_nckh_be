@@ -9,6 +9,8 @@ from app.utils import auth
 from pydantic import BaseModel
 from typing import Optional, List
 
+from app.schemas.job_schema import JobFilterSchema
+
 router = APIRouter()
 
 class MinioImportRequest(BaseModel):
@@ -22,7 +24,7 @@ async def get_db():
 
 @router.post("/get-jobs")
 async def get_jobs(
-    filters: get_schema.GetSchema,
+    filters: JobFilterSchema,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(auth.verify_token_user)
 ):

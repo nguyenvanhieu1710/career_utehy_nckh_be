@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, and_, or_
+from sqlalchemy.orm import joinedload
 from fastapi import HTTPException, status
 from app.models.job import Job
 from app.models.company import Company
@@ -132,12 +133,14 @@ async def create_job(user_perms: list[str], data: JobCreate, db: AsyncSession):
         )
 
 
+from app.schemas.job_schema import JobFilterSchema
+
 @require_permission(["job.list"])
-async def get_all_jobs(user_perms: list[str], filters: get_schema.GetSchema, db: AsyncSession):
+async def get_all_jobs(user_perms: list[str], filters: JobFilterSchema, db: AsyncSession):
     """
     Get all jobs with pagination and search
     """
-    base_stmt = select(Job).join(Company, Job.company_id == Company.id)
+    base_stmt = select(Job).options(joinedload(Job.company)).join(Company, Job.company_id == Company.id)
     
     # Filter out deleted jobs (soft delete) - allow NULL values for backward compatibility
     base_stmt = base_stmt.where((Job.action_status != "deleted") | (Job.action_status.is_(None)))
@@ -155,6 +158,27 @@ async def get_all_jobs(user_perms: list[str], filters: get_schema.GetSchema, db:
                 Job.description.ilike(keyword)
             )
         )
+
+    if filters.location:
+        base_stmt = base_stmt.where(Job.location.ilike(f"%{filters.location}%"))
+        
+    if filters.job_type:
+        base_stmt = base_stmt.where(Job.job_type == filters.job_type)
+
+    if filters.salary_min is not None:
+        base_stmt = base_stmt.where(Job.salary_max >= filters.salary_min)
+        
+    if filters.salary_max is not None:
+        base_stmt = base_stmt.where(Job.salary_min <= filters.salary_max)
+        
+    if filters.work_arrangement:
+        base_stmt = base_stmt.where(Job.work_arrangement == filters.work_arrangement)
+        
+    if filters.remote_allowed is True:
+        base_stmt = base_stmt.where(Job.work_arrangement == "remote")
+
+    if filters.status:
+        base_stmt = base_stmt.where(Job.status == filters.status)
 
     page = filters.page if filters.page and filters.page > 0 else 1
     row = min(filters.row if filters.row and filters.row > 0 else 10, 100)
@@ -186,6 +210,7 @@ async def get_job_by_id(user_perms: list[str], job_id: str, db: AsyncSession):
     """
     result = await db.execute(
         select(Job)
+        .options(joinedload(Job.company))
         .join(Company, Job.company_id == Company.id)
         .where(
             and_(
