@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 from app.core.database import SessionLocal
 from app.services import category_service
 from app.core.status import EntityStatus
+from app.models.user import Users
+from app.models.job import Job
+from app.models.company import Company
 
 router = APIRouter()
 
@@ -79,4 +83,46 @@ async def get_public_category_detail(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch category details"
+        )
+
+
+@router.get("/stats")
+async def get_public_stats(db: AsyncSession = Depends(get_db)):
+    """
+    Get public statistics for the hero section (no authentication required).
+
+    Returns:
+    - **user_count**: Total number of registered users
+    - **job_count**: Total number of approved jobs
+    - **company_count**: Total number of active companies
+    """
+    try:
+        # Count all users
+        user_result = await db.execute(select(func.count()).select_from(Users))
+        user_count = user_result.scalar() or 0
+
+        # Count approved jobs
+        job_result = await db.execute(
+            select(func.count()).select_from(Job).where(Job.status == "approved")
+        )
+        job_count = job_result.scalar() or 0
+
+        # Count active companies
+        company_result = await db.execute(
+            select(func.count()).select_from(Company).where(Company.action_status == "active")
+        )
+        company_count = company_result.scalar() or 0
+
+        return {
+            "status": "success",
+            "data": {
+                "user_count": user_count,
+                "job_count": job_count,
+                "company_count": company_count,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch statistics"
         )

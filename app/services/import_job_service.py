@@ -114,7 +114,7 @@ class ImportJobService:
                     company_id=company_id,
                     location=location,
                     job_type=ImportJobService.map_job_type(item.get("employment_type")),
-                    salary_display=item.get("salary_text"),
+                    salary_display=(item.get("salary_text") or "")[:100],
                     salary_min=item.get("salary_min_usd"),
                     salary_max=item.get("salary_max_usd"),
                     skills=skills,
@@ -133,6 +133,7 @@ class ImportJobService:
             except Exception as e:
                 logger.error(f"Error importing item: {str(e)}")
                 count_error += 1
+                await db.rollback()
         
         await db.commit()
         return count_success, count_error
@@ -184,6 +185,7 @@ class ImportJobService:
             }
         except Exception as e:
             logger.error(f"MinIO Import Error: {str(e)}")
+            await db.rollback()
             return {"status": "error", "message": str(e)}
 
     @staticmethod
