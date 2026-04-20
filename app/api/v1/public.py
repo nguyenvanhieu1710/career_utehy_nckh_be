@@ -126,3 +126,33 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch statistics"
         )
+
+
+@router.get("/featured-students")
+async def get_featured_students(
+    limit: int = 6,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get a list of students with avatars for the hero section (no authentication required).
+    
+    - **limit**: Maximum number of students to return (default: 6, max: 20)
+    """
+    try:
+        if limit > 20:
+            limit = 20
+        
+        # Fetch users who have an avatar_url
+        query = select(Users).where(Users.avatar_url.isnot(None)).limit(limit)
+        result = await db.execute(query)
+        users = result.scalars().all()
+        
+        return {
+            "status": "success",
+            "data": users
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch featured students"
+        )

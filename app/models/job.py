@@ -20,6 +20,8 @@ class Job(BaseModel):
     requirements = Column(Text)
     description = Column(Text)
     benefits = Column(Text)
+    job_level = Column(String(100))
+    years_of_experience = Column(Integer)
     status = Column(String(20))  # 'pending', 'approved', 'rejected'
     source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
     url_source = Column(String(255))
