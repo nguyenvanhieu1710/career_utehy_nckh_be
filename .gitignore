@@ -33,11 +33,6 @@ docker-compose.override.yml
 uploads/*
 !uploads/.gitkeep
 
-# FAISS vector storage (can be regenerated)
-faiss_storage/
-*.index
-*.pkl
-
 # Alembic
 alembic/__pycache__/
 alembic/versions/__pycache__/
