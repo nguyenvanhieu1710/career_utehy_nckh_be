@@ -109,3 +109,19 @@ async def get_cv_for_user(user_id: str, filters: get_schema.GetSchema, db: Async
         "row": row,
         "data": data
     }
+
+async def delete_cv(cv_id: str, user_id: str, db: AsyncSession):
+    result = await db.execute(
+        select(cv_profile.CVProfile).where(cv_profile.CVProfile.id == cv_id).where(cv_profile.CVProfile.user_id == user_id)
+    )
+    cv = result.scalar_one_or_none()
+
+    if not cv:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CV not found or you do not have permission to delete it"
+        )
+
+    await db.delete(cv)
+    await db.commit()
+    return {"status": "success", "message": "CV deleted successfully"}

@@ -14,10 +14,10 @@ class UploadService:
     """
     
     # Allowed file types
-    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'}
     ALLOWED_MIME_TYPES = {
         'image/jpeg', 'image/jpg', 'image/png', 
-        'image/gif', 'image/webp'
+        'image/gif', 'image/webp', 'application/pdf'
     }
     
     # File size limits (in bytes)

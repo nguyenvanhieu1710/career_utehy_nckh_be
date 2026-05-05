@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, data_source, crawl_history, scheduler, cv_template
+from app.api.v1 import email, payment, permission, auth, cv, category, job, company, upload, common, public, job_mongo, data_source, crawl_history, scheduler, cv_template, cv_uploaded
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.static_files import StaticFileSecurityMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware, create_rate_limit_middleware
@@ -166,6 +166,7 @@ app.include_router(data_source.router, prefix="/api/v1", tags=["Data Source"])
 app.include_router(crawl_history.router, prefix="/api/v1", tags=["Crawl History"])
 app.include_router(scheduler.router, prefix="/api/v1", tags=["Scheduler"])
 app.include_router(cv_template.router, prefix="/api/v1/cv-templates", tags=["CV Templates"])
+app.include_router(cv_uploaded.router, prefix="/api/v1/cv-uploaded", tags=["CV Uploaded"])
 
 # Static file serving for uploads
 uploads_dir = "uploads"

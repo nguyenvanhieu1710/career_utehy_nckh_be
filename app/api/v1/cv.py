@@ -44,3 +44,13 @@ async def get(
     ):
     result = await cv_service.get_cv_for_user(user_id=user_id,filters=filters, db=db)
     return result
+
+@router.delete("/{cv_id}")
+async def cv_delete(
+        cv_id: str,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    result = await cv_service.delete_cv(cv_id=cv_id, user_id=user_id, db=db)
+    return result
+

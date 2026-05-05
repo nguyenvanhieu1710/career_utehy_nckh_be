@@ -35,6 +35,8 @@ class Users(Base):
     job_statuses = relationship("JobStatus", back_populates="user")
     cv_profiles = relationship("CVProfile", back_populates="user")
     favorite_jobs = relationship("JobFavorite", back_populates="user")
+    cv_uploaded = relationship("CVUploaded", back_populates="user")
+
 
 class UserRole(Base):
     __tablename__ = "user_roles"
