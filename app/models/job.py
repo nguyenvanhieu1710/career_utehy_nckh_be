@@ -24,7 +24,7 @@ class Job(BaseModel):
     years_of_experience = Column(Integer)
     status = Column(String(20))  # 'pending', 'approved', 'rejected'
     source_id = Column(UUID(as_uuid=True), ForeignKey('data_sources.id'))
-    url_source = Column(String(255))
+    url_source = Column(Text)
     posted_at = Column(DateTime)
     expired_at = Column(DateTime)
     

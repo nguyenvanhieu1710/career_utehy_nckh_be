@@ -8,9 +8,9 @@ class Company(BaseModel):
     
     name = Column(String(200), nullable=False)
     slug = Column(String(255), unique=True)
-    logo_url = Column(String(255))
-    website = Column(String(255))
-    address = Column(String(255))
+    logo_url = Column(Text)
+    website = Column(Text)
+    address = Column(Text)
     description = Column(Text)
     industry = Column(String(100))
     sub_industries = Column(JSON)
