@@ -47,7 +47,7 @@ class CronScheduler:
         self.scheduler.add_listener(self._job_error, EVENT_JOB_ERROR)
         
         # Crawl service configuration
-        self.crawl_service_url = os.getenv('CRAWL_SERVICE_URL', 'http://localhost:3000')
+        self.crawl_service_url = os.getenv('CRAWLER_SERVICE_URL')
         
     async def start(self):
         """Start the scheduler and load active jobs"""
@@ -162,50 +162,61 @@ class CronScheduler:
     
     async def execute_crawl(self, source_id: str):
         """Execute crawl by calling crawler-service API dynamically"""
-        logger.info(f"🕷️ Starting crawl task for configuration: {source_id}")
+        logger.info(f"🕷️ Starting crawl task for source_id: {source_id}")
         
         try:
             async with SessionLocal() as db:
                 from app.services.crawler_config_service import CrawlerConfigService
+                from sqlalchemy.orm import selectinload
+                from sqlalchemy import select
+                from app.models.crawler_config import CrawlerConfig
                 
-                # Fetch config including the new crawler_payload
-                config = await CrawlerConfigService.get_config_by_source_id(db, source_id)
+                # Fetch config with source relationship
+                query = select(CrawlerConfig).where(CrawlerConfig.source_id == source_id).options(selectinload(CrawlerConfig.source))
+                result = await db.execute(query)
+                config = result.scalar_one_or_none()
+                
                 if not config:
                     raise Exception(f"Crawler config for source {source_id} not found")
+                
+                source_name = config.source.name.lower() if config.source else "unknown"
+                # Handle mapping for common source names to endpoints
+                endpoint_map = {
+                    "jobgo": "/api/crawl/jobgo",
+                    "jobsgo": "/api/crawl/jobgo",
+                    "itviec": "/api/crawl/itviec",
+                    "topcv": "/api/crawl/topcv",
+                    "vietnamworks": "/api/crawl/vietnamworks",
+                    "vieclam24h": "/api/crawl/vieclam24h"
+                }
+                
+                endpoint = endpoint_map.get(source_name, f"/api/crawl/{source_name}")
                 
                 # Update last_scheduled_at
                 await CrawlerConfigService.update_last_scheduled(db, source_id)
                 
-                payload = config.crawler_payload
-                if not payload:
-                    logger.warning(f"⚠️ No crawler_payload found for {source_id}, skipping.")
-                    return
+                payload = config.crawler_payload or {}
                 
-            # CRAWLER API URL (default to localhost:8001 if not set)
-            crawler_url = os.getenv('CRAWLER_SERVICE_URL')
-            
-            # Use /push-job endpoint for all stages
-            endpoint = "/push-job"
-            stage = payload.get('stage', 1)
+            # CRAWLER API URL
+            crawler_url = self.crawl_service_url
             
             # Ensure required fields for Crawler API
             prepared_payload = payload.copy()
-            if 'stage' not in prepared_payload:
-                prepared_payload['stage'] = stage
+            if 'saveToDb' not in prepared_payload:
+                prepared_payload['saveToDb'] = True
             
-            if 'url_web' not in prepared_payload:
-                # Use source's base_url if url_web is missing in payload
-                prepared_payload['url_web'] = config.base_url or ""
+            if 'url' not in prepared_payload and config.source and config.source.base_url:
+                prepared_payload['url'] = config.source.base_url
             
             # Call Crawler API
-            timeout = aiohttp.ClientTimeout(total=600)  # 10 minutes for long crawl tasks
+            timeout = aiohttp.ClientTimeout(total=30)  # 30 seconds (it's async now)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"{crawler_url}{endpoint}"
                 
-                logger.info(f"📡 Calling Crawler API: {url} (Stage: {prepared_payload.get('stage')})")
+                logger.info(f"📡 Calling Crawler API: {url} with payload: {prepared_payload}")
                 
                 async with session.post(url, json=prepared_payload) as response:
-                    if response.status == 200:
+                    if response.status in [200, 202]:
                         result = await response.json()
                         logger.info(f"✅ Crawler accepted job: {result}")
                         return result

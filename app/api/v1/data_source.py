@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.services.data_source_service import DataSourceService
 from app.utils.auth import get_current_user_permissions
+from app.core.scheduler import cron_scheduler
 import logging
 
 logger = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ async def create_data_source(
             crawler_payload=data_source_data.crawler_payload
         )
         
-        return DataSourceResponse(
+        response_data = DataSourceResponse(
             id=str(data_source.id),
             name=data_source.name,
             base_url=data_source.base_url,
@@ -210,6 +211,19 @@ async def create_data_source(
             crawl_enabled=data_source_data.crawl_enabled if data_source_data.crawl_enabled is not None else True,
             next_run_at=None
         )
+
+        # Handle scheduling if enabled
+        if data_source_data.crawl_enabled is not False:
+            from app.services.crawler_config_service import CrawlerConfigService
+            config = await CrawlerConfigService.get_config_by_source_id(db, str(data_source.id))
+            if config and config.cron_expression:
+                await cron_scheduler.schedule_crawl_job(
+                    source_id=str(data_source.id),
+                    cron_expression=config.cron_expression,
+                    timezone=config.timezone
+                )
+
+        return response_data
         
     except HTTPException:
         raise
@@ -265,7 +279,7 @@ async def update_data_source(
         from app.services.crawl_history_service import CrawlHistoryService
         next_run_at = await CrawlHistoryService.get_next_scheduled_crawl(db, data_source_id)
         
-        return DataSourceResponse(
+        response_data = DataSourceResponse(
             id=str(data_source.id),
             name=data_source.name,
             base_url=data_source.base_url,
@@ -281,6 +295,19 @@ async def update_data_source(
             crawl_enabled=crawler_config.status == "enabled" if crawler_config else False,
             next_run_at=next_run_at.isoformat() if next_run_at else None
         )
+
+        # Update scheduler dynamically
+        if crawler_config:
+            if crawler_config.status == "enabled" and crawler_config.cron_expression:
+                await cron_scheduler.schedule_crawl_job(
+                    source_id=data_source_id,
+                    cron_expression=crawler_config.cron_expression,
+                    timezone=crawler_config.timezone
+                )
+            else:
+                await cron_scheduler.unschedule_crawl_job(data_source_id)
+
+        return response_data
         
     except HTTPException:
         raise
@@ -314,6 +341,9 @@ async def delete_data_source(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Data source not found"
             )
+        
+        # Remove from scheduler
+        await cron_scheduler.unschedule_crawl_job(data_source_id)
         
         return {"message": "Data source deleted successfully"}
         
@@ -390,17 +420,25 @@ async def trigger_crawl(
                 detail="Data source not found"
             )
         
-        # Update last crawled timestamp
+        # Update last crawled timestamp in DB
         await DataSourceService.update_last_crawled(db, data_source_id)
         
-        # TODO: Implement actual crawling logic here
-        # For now, just return success message
-        
-        return {
-            "message": "Crawl triggered successfully",
-            "data_source_id": data_source_id,
-            "status": "started"
-        }
+        # Trigger actual crawling via Scheduler
+        try:
+            result = await cron_scheduler.trigger_crawl_now(data_source_id)
+            return {
+                "message": "Crawl triggered successfully",
+                "data_source_id": data_source_id,
+                "status": "started",
+                "result": result
+            }
+        except Exception as e:
+            logger.error(f"Failed to trigger crawl for {data_source_id}: {str(e)}")
+            # Even if the trigger fails (e.g. crawler service down), we return 202 or 500
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to trigger crawl: {str(e)}"
+            )
         
     except HTTPException:
         raise
