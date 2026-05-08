@@ -1,6 +1,6 @@
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, UploadFile, Response, Query, Depends, HTTPException, Form, status
-from app.services import cv_service
+from app.services import cv_service, matching_proxy_service
 from app.schemas import get_schema
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base, engine, SessionLocal
@@ -54,3 +54,51 @@ async def cv_delete(
     result = await cv_service.delete_cv(cv_id=cv_id, user_id=user_id, db=db)
     return result
 
+@router.get("/recommendations/{cv_id}")
+async def get_recommendations(
+        cv_id: str,
+        top_k: int = Query(10, ge=1, le=50),
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """
+    Get job recommendations based on a specific Online CV profile (Scenario 2)
+    """
+    return await matching_proxy_service.MatchingProxyService.get_recommendations(
+        cv_id=cv_id,
+        user_id=user_id,
+        db=db,
+        top_k=top_k
+    )
+
+@router.get("/recommendations/file/{cv_id}")
+async def get_recommendations_from_file(
+        cv_id: str,
+        top_k: int = Query(10, ge=1, le=50),
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """
+    Get job recommendations based on a specific Uploaded PDF CV (Scenario 3)
+    """
+    return await matching_proxy_service.MatchingProxyService.get_recommendations_from_file(
+        cv_id=cv_id,
+        user_id=user_id,
+        db=db,
+        top_k=top_k
+    )
+
+@router.get("/recommendations-auto")
+async def get_recommendations_auto(
+        top_k: int = Query(10, ge=1, le=50),
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """
+    Automatically detect and use the best CV source (Scenario 1 & 4)
+    """
+    return await matching_proxy_service.MatchingProxyService.get_auto_recommendations(
+        user_id=user_id,
+        db=db,
+        top_k=top_k
+    )
