@@ -4,11 +4,12 @@ from app.core.database import SessionLocal
 from app.services import job_service, user_service, company_service, import_job_service
 from app.services.job_service import JobCreate, JobUpdate
 from app.services.notification_service import NotificationService
+from app.services.crawl_history_service import CrawlHistoryService
 from app.schemas import get_schema
 from app.utils import auth
 
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 
 from app.schemas.job_schema import JobFilterSchema
@@ -24,6 +25,10 @@ class MinioImportRequest(BaseModel):
 class CrawlCallbackRequest(BaseModel):
     source: str
     newJobIds: List[str]
+    historyId: Optional[str] = None
+    status: Optional[str] = "completed"
+    statistics: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
     timestamp: Optional[str] = None
 
 async def get_db():
@@ -40,13 +45,40 @@ async def crawl_callback(
     """
     logger.info(f"🔔 Received crawl callback from {data.source} with {len(data.newJobIds)} new jobs.")
     
-    # Trigger notification in background to not block the crawler
-    background_tasks.add_task(
-        NotificationService.notify_suitable_users_on_new_jobs,
-        data.newJobIds
-    )
+    # 1. Trigger notification in background to not block the crawler và Cập nhật lịch sử cào nếu có historyId
+    if data.historyId:
+        async with SessionLocal() as db:
+            try:
+                stats = data.statistics or {}
+                await CrawlHistoryService.complete_crawl_session(
+                    db=db,
+                    crawl_id=data.historyId,
+                    status=data.status or 'completed',
+                    error_message=data.error
+                )
+                
+                # Cập nhật thêm các con số thống kê chi tiết
+                await CrawlHistoryService.update_crawl_progress(
+                    db=db,
+                    crawl_id=data.historyId,
+                    total_jobs_found=stats.get("total", len(data.newJobIds)),
+                    jobs_created=stats.get("inserted", 0),
+                    jobs_updated=stats.get("updated", 0),
+                    jobs_failed=stats.get("failed", 0),
+                    jobs_skipped=stats.get("skipped", 0)
+                )
+                logger.info(f"✅ Updated crawl history: {data.historyId}")
+            except Exception as e:
+                logger.error(f"❌ Failed to update crawl history in callback: {e}")
+
+    # 2. Trigger notification in background
+    if data.newJobIds:
+        background_tasks.add_task(
+            NotificationService.notify_suitable_users_on_new_jobs,
+            data.newJobIds
+        )
     
-    return {"status": "success", "message": "Notification task scheduled"}
+    return {"status": "success", "message": "Notification task scheduled. Callback processed and history updated"}
 
 
 @router.post("/get-jobs")

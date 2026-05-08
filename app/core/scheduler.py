@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import SessionLocal
 from app.services.crawler_config_service import CrawlerConfigService
+from app.services.crawl_history_service import CrawlHistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,11 @@ class CronScheduler:
         """Execute crawl by calling crawler-service API dynamically"""
         logger.info(f"🕷️ Starting crawl task for source_id: {source_id}")
         
+        # 1. Lấy cấu hình và Khởi tạo lịch sử cào
+        history_id = None
+        payload = {}
+        endpoint = ""
+        
         try:
             async with SessionLocal() as db:
                 from app.services.crawler_config_service import CrawlerConfigService
@@ -191,46 +197,81 @@ class CronScheduler:
                 }
                 
                 endpoint = endpoint_map.get(source_name, f"/api/crawl/{source_name}")
+                payload = config.crawler_payload or {}
                 
                 # Update last_scheduled_at
                 await CrawlerConfigService.update_last_scheduled(db, source_id)
-                
-                payload = config.crawler_payload or {}
-                
-            # CRAWLER API URL
+
+                try:
+                    history = await CrawlHistoryService.create_crawl_session(
+                        db=db,
+                        source_id=source_id,
+                        crawler_version="1.0.0"
+                    )
+                    history_id = str(history.id)
+                except Exception as e:
+                    logger.error(f"❌ Failed to create crawl history: {e}")
+
+            # 2. CRAWLER API URL
             crawler_url = self.crawl_service_url
             
-            # Prepare Callback URL
+            # 3. Prepare Callback URL
             backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
             callback_url = f"{backend_url}/api/v1/job/crawl-callback"
             
-            # Ensure required fields for Crawler API
+            # 4. Ensure required fields for Crawler API
             prepared_payload = payload.copy()
             prepared_payload['callbackUrl'] = callback_url
+            if history_id:
+                prepared_payload['historyId'] = history_id
             
             if 'saveToDb' not in prepared_payload:
                 prepared_payload['saveToDb'] = True
             
-            if 'url' not in prepared_payload and config.source and config.source.base_url:
+            # Use base_url from config if not provided in payload
+            if 'url' not in prepared_payload and 'config' in locals() and config.source and config.source.base_url:
                 prepared_payload['url'] = config.source.base_url
             
-            # Call Crawler API
+            # 5. Call Crawler API
             timeout = aiohttp.ClientTimeout(total=30)  # 30 seconds (it's async now)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"{crawler_url}{endpoint}"
                 
                 logger.info(f"📡 Calling Crawler API: {url} with payload: {prepared_payload}")
                 
-                async with session.post(url, json=prepared_payload) as response:
-                    if response.status in [200, 202]:
-                        result = await response.json()
-                        logger.info(f"✅ Crawler accepted job: {result}")
-                        return result
-                    else:
-                        error_text = await response.text()
-                        error_msg = f"Crawler API returned {response.status}: {error_text}"
-                        logger.error(f"❌ Crawler API failed: {error_msg}")
-                        raise Exception(error_msg)
+                try:
+                    async with session.post(url, json=prepared_payload) as response:
+                        if response.status in [200, 202]:
+                            result = await response.json()
+                            logger.info(f"✅ Crawler accepted job: {result}")
+                            return result
+                        else:
+                            error_text = await response.text()
+                            error_msg = f"Crawler API returned {response.status}: {error_text}"
+                            logger.error(f"❌ Crawler API failed: {error_msg}")
+                            
+                            # Cập nhật lịch sử thất bại nếu request không thành công
+                            if history_id:
+                                async with SessionLocal() as db_fail:
+                                    await CrawlHistoryService.complete_crawl_session(
+                                        db=db_fail,
+                                        crawl_id=history_id,
+                                        status='failed',
+                                        error_message=error_msg
+                                    )
+                            raise Exception(error_msg)
+                except Exception as e:
+                    # Xử lý các lỗi kết nối (Connection Error, etc.)
+                    error_msg = f"Failed to connect to Crawler API: {str(e)}"
+                    if history_id:
+                        async with SessionLocal() as db_fail:
+                            await CrawlHistoryService.complete_crawl_session(
+                                db=db_fail,
+                                crawl_id=history_id,
+                                status='failed',
+                                error_message=error_msg
+                            )
+                    raise e
         
         except asyncio.TimeoutError:
             error_msg = "Crawler request timed out"

@@ -131,8 +131,9 @@ class CrawlHistoryService:
     ) -> Dict[str, Any]:
         """Get paginated crawl histories with filters"""
         try:
-            # Base query
-            query = select(CrawlHistory)
+            from sqlalchemy.orm import selectinload
+            # Base query with source loaded
+            query = select(CrawlHistory).options(selectinload(CrawlHistory.source))
             
             # Apply filters
             if source_id:
@@ -170,11 +171,12 @@ class CrawlHistoryService:
                 history_dict = {
                     "id": str(history.id),
                     "source_id": str(history.source_id),
-                    "started_at": history.started_at.isoformat() if history.started_at else None,
-                    "completed_at": history.completed_at.isoformat() if history.completed_at else None,
+                    "source_name": history.source.name if history.source else "Unknown",
+                    "started_at": history.started_at.isoformat() + "Z" if history.started_at else None,
+                    "completed_at": history.completed_at.isoformat() + "Z" if history.completed_at else None,
                     "duration_seconds": history.duration_seconds,
-                    "last_run_at": history.last_run_at.isoformat() if history.last_run_at else None,
-                    "next_run_at": history.next_run_at.isoformat() if history.next_run_at else None,
+                    "last_run_at": history.last_run_at.isoformat() + "Z" if history.last_run_at else None,
+                    "next_run_at": history.next_run_at.isoformat() + "Z" if history.next_run_at else None,
                     "status": history.status,
                     "total_jobs_found": history.total_jobs_found,
                     "jobs_created": history.jobs_created,
@@ -187,8 +189,8 @@ class CrawlHistoryService:
                     "avg_response_time_ms": history.avg_response_time_ms,
                     "success_rate": history.success_rate,
                     "crawler_version": history.crawler_version,
-                    "created_at": history.created_at.isoformat() if history.created_at else None,
-                    "updated_at": history.updated_at.isoformat() if history.updated_at else None
+                    "created_at": history.created_at.isoformat() + "Z" if history.created_at else None,
+                    "updated_at": history.updated_at.isoformat() + "Z" if history.updated_at else None
                 }
                 histories_data.append(history_dict)
             
@@ -228,11 +230,11 @@ class CrawlHistoryService:
                 "source_id": str(crawl_history.source_id),
                 "source_name": source.name if source else "Unknown",
                 "source_base_url": source.base_url if source else None,
-                "started_at": crawl_history.started_at.isoformat() if crawl_history.started_at else None,
-                "completed_at": crawl_history.completed_at.isoformat() if crawl_history.completed_at else None,
+                "started_at": crawl_history.started_at.isoformat() + "Z" if crawl_history.started_at else None,
+                "completed_at": crawl_history.completed_at.isoformat() + "Z" if crawl_history.completed_at else None,
                 "duration_seconds": crawl_history.duration_seconds,
-                "last_run_at": crawl_history.last_run_at.isoformat() if crawl_history.last_run_at else None,
-                "next_run_at": crawl_history.next_run_at.isoformat() if crawl_history.next_run_at else None,
+                "last_run_at": crawl_history.last_run_at.isoformat() + "Z" if crawl_history.last_run_at else None,
+                "next_run_at": crawl_history.next_run_at.isoformat() + "Z" if crawl_history.next_run_at else None,
                 "status": crawl_history.status,
                 "total_jobs_found": crawl_history.total_jobs_found,
                 "jobs_created": crawl_history.jobs_created,
@@ -246,8 +248,8 @@ class CrawlHistoryService:
                 "success_rate": crawl_history.success_rate,
                 "crawler_version": crawl_history.crawler_version,
                 "user_agent": crawl_history.user_agent,
-                "created_at": crawl_history.created_at.isoformat() if crawl_history.created_at else None,
-                "updated_at": crawl_history.updated_at.isoformat() if crawl_history.updated_at else None
+                "created_at": crawl_history.created_at.isoformat() + "Z" if crawl_history.created_at else None,
+                "updated_at": crawl_history.updated_at.isoformat() + "Z" if crawl_history.updated_at else None
             }
             
         except Exception as e:
