@@ -59,15 +59,15 @@ class CronScheduler:
             await self.load_active_jobs()
             
             # Register MinIO auto-import task (Every 30 mins)
-            self.scheduler.add_job(
-                func=self.execute_auto_import_from_minio,
-                trigger='interval',
-                minutes=30,
-                id='minio_auto_import',
-                name='Automatic import from MinIO stage3 folders',
-                replace_existing=True
-            )
-            logger.info("📅 Scheduled MinIO auto-import task (every 30 mins)")
+            # self.scheduler.add_job(
+            #     func=self.execute_auto_import_from_minio,
+            #     trigger='interval',
+            #     minutes=30,
+            #     id='minio_auto_import',
+            #     name='Automatic import from MinIO stage3 folders',
+            #     replace_existing=True
+            # )
+            # logger.info("📅 Scheduled MinIO auto-import task (every 30 mins)")
             
         except Exception as e:
             logger.error(f"❌ Failed to start scheduler: {e}")
@@ -200,8 +200,14 @@ class CronScheduler:
             # CRAWLER API URL
             crawler_url = self.crawl_service_url
             
+            # Prepare Callback URL
+            backend_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+            callback_url = f"{backend_url}/api/v1/job/crawl-callback"
+            
             # Ensure required fields for Crawler API
             prepared_payload = payload.copy()
+            prepared_payload['callbackUrl'] = callback_url
+            
             if 'saveToDb' not in prepared_payload:
                 prepared_payload['saveToDb'] = True
             

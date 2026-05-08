@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import SessionLocal
 from app.services import job_service, user_service, company_service, import_job_service
 from app.services.job_service import JobCreate, JobUpdate
+from app.services.notification_service import NotificationService
 from app.schemas import get_schema
 from app.utils import auth
 
 from pydantic import BaseModel
 from typing import Optional, List
+import logging
 
 from app.schemas.job_schema import JobFilterSchema
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -17,9 +21,32 @@ class MinioImportRequest(BaseModel):
     bucket: str
     object_name: str
 
+class CrawlCallbackRequest(BaseModel):
+    source: str
+    newJobIds: List[str]
+    timestamp: Optional[str] = None
+
 async def get_db():
     async with SessionLocal() as session:
         yield session
+
+@router.post("/crawl-callback")
+async def crawl_callback(
+    data: CrawlCallbackRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Callback endpoint for Crawler Service to notify about new jobs.
+    """
+    logger.info(f"🔔 Received crawl callback from {data.source} with {len(data.newJobIds)} new jobs.")
+    
+    # Trigger notification in background to not block the crawler
+    background_tasks.add_task(
+        NotificationService.notify_suitable_users_on_new_jobs,
+        data.newJobIds
+    )
+    
+    return {"status": "success", "message": "Notification task scheduled"}
 
 
 @router.post("/get-jobs")

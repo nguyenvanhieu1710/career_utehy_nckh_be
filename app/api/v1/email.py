@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks, APIRouter, Depends
+from typing import Any
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from app.utils import auth
 from app.core.email import settings
@@ -27,7 +28,7 @@ router = APIRouter()
 
 
 # ---------- TEMPLATE FUNCTION ----------
-def generate_email_html(type_: str, token_or_otp: str = None):
+def generate_email_html(type_: str, token_or_otp: Any = None):
     main_color = "#2E7D32"  # xanh lá đậm
     accent_color = "#43A047"
     text_color = "#333"
@@ -66,6 +67,35 @@ def generate_email_html(type_: str, token_or_otp: str = None):
             <span style="font-size:32px;font-weight:bold;color:{main_color};letter-spacing:6px;">{token_or_otp}</span>
         </div>
         <p style="font-size:14px;color:#555;">Valid for 1 minute. Do not share this code with anyone.</p>
+        """
+    elif type_ == "job_recommendation":
+        jobs_html = ""
+        for job in token_or_otp:
+            score_color = "#2E7D32" if job.get('score', 0) >= 70 else "#FBC02D"
+            jobs_html += f"""
+            <div style="text-align:left; padding:15px; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:12px; background: white;">
+                <h3 style="margin:0; color:#1976D2; font-size:18px;">{job.get('title', 'N/A')}</h3>
+                <p style="margin:4px 0; color:#666; font-weight: 500;">{job.get('company', 'N/A')}</p>
+                <div style="margin-top:8px;">
+                    <span style="background:{score_color}; color:white; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold;">
+                        {job.get('score', 0)}% Phù hợp
+                    </span>
+                    <span style="margin-left:10px; font-size:13px; color:#777;">📍 {job.get('location', 'N/A')}</span>
+                </div>
+            </div>
+            """
+        body = f"""
+        <p style="font-size:18px; color:{text_color}; text-align:left; font-weight: bold;">Chào bạn,</p>
+        <p style="font-size:16px; color:{text_color}; text-align:left;">Chúng tôi vừa tìm thấy một số công việc mới rất phù hợp với hồ sơ của bạn:</p>
+        <div style="margin-top: 20px;">
+            {jobs_html}
+        </div>
+        <a href="#" 
+            style="display:inline-block;text-decoration:none;background:{main_color};color:white;
+                   padding:14px 32px;border-radius:8px;font-weight:bold;margin-top:20px; font-size:16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            Xem chi tiết và ứng tuyển ngay
+        </a>
+        <p style="font-size:13px;color:#888;margin-top:25px; font-style: italic;">Career - Hệ thống gợi ý việc làm thông minh sử dụng AI</p>
         """
     else:
         body = "<p>Unknown email type</p>"

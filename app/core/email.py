@@ -14,9 +14,9 @@ class EmailSettings(BaseModel):
     MAIL_SSL_TLS: bool
 
 # Read from environment variables
-MAIL_USERNAME = os.getenv("MAIL_USERNAME", "Tungdohotat12345@gmail.com")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "knyz iyfr jyqz ewdf")
-MAIL_FROM = os.getenv("MAIL_FROM", "Tungdohotat12345@gmail.com")
+MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+MAIL_FROM = os.getenv("MAIL_FROM")
 
 # Validate required environment variables
 if not MAIL_USERNAME or not MAIL_PASSWORD or not MAIL_FROM:

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class MatchingProxyService:
     @staticmethod
-    async def get_recommendations(cv_id: str, user_id: str, db: AsyncSession, top_k: int = 10):
+    async def get_recommendations(cv_id: str, user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None):
         """
         Fetch recommendations from Matching Service for a given CV (JSON/Online)
         """
@@ -36,11 +36,11 @@ class MatchingProxyService:
         return await MatchingProxyService._call_matching_api(
             "/api/v1/match/cv-json", 
             json_data=mapped_data, 
-            params={"top_k": top_k}
+            params={"top_k": top_k, "job_ids": job_ids} if job_ids else {"top_k": top_k}
         )
 
     @staticmethod
-    async def get_recommendations_from_file(cv_id: str, user_id: str, db: AsyncSession, top_k: int = 10):
+    async def get_recommendations_from_file(cv_id: str, user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None):
         """
         Fetch recommendations using an uploaded PDF file
         """
@@ -68,10 +68,15 @@ class MatchingProxyService:
             }
 
         matching_url = os.getenv("MATCHING_SERVICE_URL", "http://localhost:8002")
-        # Ensure top_k is sent as a query parameter
+        # Ensure top_k and job_ids are sent as query parameters
         api_url = f"{matching_url}/api/v1/match/cv-file?top_k={top_k}"
+        if job_ids:
+            # aiohttp handles list of params by repeating the key
+            for jid in job_ids:
+                api_url += f"&job_ids={jid}"
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=600)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             data = aiohttp.FormData()
             data.add_field('file', open(file_path, 'rb'), filename=os.path.basename(file_path), content_type='application/pdf')
 
@@ -87,7 +92,7 @@ class MatchingProxyService:
                 return {"success": False, "message": str(e)}
 
     @staticmethod
-    async def get_auto_recommendations(user_id: str, db: AsyncSession, top_k: int = 10):
+    async def get_auto_recommendations(user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None):
         """
         Automatically detect the best CV to use for recommendations
         Scenario 4: Priority logic
@@ -101,7 +106,7 @@ class MatchingProxyService:
         
         if cv_profile_item:
             logger.info(f"Auto-matching using Profile CV for user {user_id}")
-            resp = await MatchingProxyService.get_recommendations(str(cv_profile_item.id), user_id, db, top_k)
+            resp = await MatchingProxyService.get_recommendations(str(cv_profile_item.id), user_id, db, top_k, job_ids)
             if isinstance(resp, dict) and resp.get("mode") != "none":
                 resp["mode"] = "profile"
             return resp
@@ -130,15 +135,19 @@ class MatchingProxyService:
         }
 
     @staticmethod
-    async def _call_matching_api(endpoint: str, json_data: dict = None, params: dict = None):
+    async def _call_matching_api(endpoint: str, json_data: dict = None, params: dict = None, method: str = "POST"):
         matching_url = os.getenv("MATCHING_SERVICE_URL")
         api_url = f"{matching_url}{endpoint}"
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=600) # Increase timeout to 10 minutes
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.post(api_url, json=json_data, params=params) as response:
+                # Use getattr to dynamically call method (post, get, etc.)
+                http_method = getattr(session, method.lower())
+                async with http_method(api_url, json=json_data, params=params) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.error(f"Matching Service Error {response.status}: {error_text}")
+                        return {"success": False, "message": f"Matching service error: {response.status}"}
                     return await response.json()
             except Exception as e:
                 logger.error(f"Matching API call failed: {e}")
