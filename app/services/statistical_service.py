@@ -8,55 +8,58 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from fastapi import Depends, HTTPException, status
 from datetime import datetime, timedelta
-from app.models import order
-from app.schemas import get_schema
-from passlib.context import CryptContext
-from app.utils import auth
-from sqlalchemy.exc import IntegrityError
-import string
-import secrets
-import math
-import calendar
+from app.models.user import Users
+from app.models.job_status import JobStatus
+from app.models.crawl_history import CrawlHistory
+from app.models.system_log import SystemLog
 
-async def get_revenue_by_month(year: int, db: AsyncSession):
-    stmt = (
-        select(
-            extract("month", order.Orders.created_at).label("month"),
-            func.sum(order.Orders.amount).label("total_revenue"),
-            func.sum(
-                case(
-                    (order.Orders.status == 'PAID', order.Orders.amount),
-                    else_=0
-                )
-            ).label("paid_revenue"),
+async def get_admin_dashboard_stats(days: int, db: AsyncSession):
+    start_date = datetime.now() - timedelta(days=days)
+    
+    # Helper to execute and map results
+    async def get_daily_counts(model, date_field, count_expr, filter_cond=None):
+        stmt = (
+            select(
+                func.date(date_field).label("date"),
+                count_expr.label("count")
+            )
+            .where(date_field >= start_date)
         )
-        .where(extract("year", order.Orders.created_at) == year)
-        .group_by("month")
-        .order_by("month")
+        if filter_cond is not None:
+            stmt = stmt.where(filter_cond)
+        
+        stmt = stmt.group_by(func.date(date_field)).order_by(func.date(date_field))
+        
+        result = await db.execute(stmt)
+        return {str(row.date): row.count for row in result.all()}
+
+    # Query metrics
+    users_data = await get_daily_counts(Users, Users.created_at, func.count(Users.id))
+    crawled_data = await get_daily_counts(
+        CrawlHistory, 
+        CrawlHistory.started_at, 
+        func.sum(CrawlHistory.jobs_created + CrawlHistory.jobs_updated)
+    )
+    
+    # Count website visits from system logs
+    visits_data = await get_daily_counts(
+        SystemLog,
+        SystemLog.created_at,
+        func.count(SystemLog.id),
+        filter_cond=(SystemLog.action_type == 'visit')
     )
 
-    result = await db.execute(stmt)
-    rows = result.all()
-    revenue_map = {
-        int(month): {
-            "total_revenue": float(total) if total else 0,
-            "paid_revenue": float(paid) if paid else 0
-        }
-        for month, total, paid in rows
-    }
+    # Generate date range for the last N days
+    chart_data = []
+    for i in range(days + 1):
+        date = (start_date + timedelta(days=i)).date()
+        date_str = str(date)
+        chart_data.append({
+            "name": date.strftime("%d/%m"),
+            "full_date": date_str,
+            "registered_students": int(users_data.get(date_str, 0)),
+            "jobs_crawled": int(crawled_data.get(date_str, 0)) if crawled_data.get(date_str) is not None else 0,
+            "website_visits": int(visits_data.get(date_str, 0))
+        })
 
-    current_year = datetime.now().year
-    current_month = datetime.now().month
-    last_month = current_month if year == current_year else 12
-
-    data = [
-        {
-            "month_num": m,
-            "month": calendar.month_abbr[m],
-            "total_revenue": revenue_map.get(m, {}).get("total_revenue", 0.0),
-            "paid_revenue": revenue_map.get(m, {}).get("paid_revenue", 0.0),
-        }
-        for m in range(1, last_month + 1)
-    ]
-
-    return data
+    return chart_data
