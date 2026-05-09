@@ -20,6 +20,8 @@ import os
 from app.core.perms import require_permission
 from app.core.status import EntityStatus, is_valid_status, get_default_status
 from app.services.upload_service import upload_service
+from app.services.system_log_service import SystemLogService
+
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -52,6 +54,7 @@ async def create(
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+        # Generate tokens
         payload = {
             'user_id': str(new_user.id),
             'email': str(new_user.email)
@@ -59,13 +62,29 @@ async def create(
         access_token = auth.create_access_token(data=payload)
         refresh_token = auth.create_refresh_token(data=payload)
 
+        # Capture user info before logging to avoid session expiration issues
+        user_id_str = str(new_user.id)
+        user_email = new_user.email
+        user_name = new_user.username
+        fullname = new_user.fullname
+        
+        # Log the signup action
+        await SystemLogService.log(
+            db=db,
+            action_type='signup',
+            user_id=user_id_str,
+            description=f"New user signed up: {user_email}",
+            path="/api/v1/auth/signup",
+            method="POST"
+        )
+
         return {"access_token": access_token,
                 "refresh_token": refresh_token,
                 "token_type": "bearer",
-                "user_id": new_user.id,
-                "user_name": new_user.username,
-                "fullname": new_user.fullname,
-                "email": new_user.email}
+                "user_id": user_id_str,
+                "user_name": user_name,
+                "fullname": fullname,
+                "email": user_email}
     except IntegrityError as err:
         await db.rollback()
         return {"error": "Email already used"}
@@ -90,13 +109,29 @@ async def login(
     access_token = auth.create_access_token(data=payload)
     refresh_token = auth.create_refresh_token(data=payload)
 
+    # Capture user info before logging to avoid session expiration issues
+    user_id_val = user.id
+    username_val = user.username
+    fullname_val = user.fullname
+    email_val = user.email
+
+    # Log the login action
+    await SystemLogService.log(
+        db=db,
+        action_type='login',
+        user_id=str(user_id_val),
+        description=f"User logged in: {email_val}",
+        path="/api/v1/auth/login",
+        method="POST"
+    )
+
     return {"access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user_id": user.id,
-            "user_name": user.username,
-            "fullname": user.fullname,
-            "email": user.email}
+            "user_id": user_id_val,
+            "user_name": username_val,
+            "fullname": fullname_val,
+            "email": email_val}
 
 async def get_user_by_user_id_decode_token(
         id: str,

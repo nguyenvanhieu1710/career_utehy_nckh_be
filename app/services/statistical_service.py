@@ -41,11 +41,11 @@ async def get_admin_dashboard_stats(days: int, db: AsyncSession):
         func.sum(CrawlHistory.jobs_created + CrawlHistory.jobs_updated)
     )
     
-    # Count website visits from system logs
+    # Count unique visitors (by IP) from system logs
     visits_data = await get_daily_counts(
         SystemLog,
         SystemLog.created_at,
-        func.count(SystemLog.id),
+        func.count(func.distinct(SystemLog.ip_address)),
         filter_cond=(SystemLog.action_type == 'visit')
     )
 

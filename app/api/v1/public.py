@@ -101,15 +101,15 @@ async def get_public_stats(db: AsyncSession = Depends(get_db)):
         user_result = await db.execute(select(func.count()).select_from(Users))
         user_count = user_result.scalar() or 0
 
-        # Count approved jobs
+        # Count all jobs
         job_result = await db.execute(
-            select(func.count()).select_from(Job).where(Job.status == "approved")
+            select(func.count()).select_from(Job)
         )
         job_count = job_result.scalar() or 0
 
-        # Count active companies
+        # Count all companies
         company_result = await db.execute(
-            select(func.count()).select_from(Company).where(Company.action_status == "active")
+            select(func.count()).select_from(Company)
         )
         company_count = company_result.scalar() or 0
 

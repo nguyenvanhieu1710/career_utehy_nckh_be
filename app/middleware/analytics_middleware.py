@@ -23,7 +23,22 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
         ]
         
         path = request.url.path
-        if any(path.startswith(p) for p in skip_paths):
+        
+        # 1. Skip logging for certain paths to avoid noise
+        skip_prefixes = [
+            "/uploads", 
+            "/static", 
+            "/docs", 
+            "/redoc", 
+            "/openapi.json", 
+            "/health", 
+            "/favicon.ico",
+            "/api/v1/auth/login",
+            "/api/v1/auth/signup"
+        ]
+        
+        # Check if path is exactly "/" or starts with any skip prefix
+        if path == "/" or any(path.startswith(p) for p in skip_prefixes):
             return await call_next(request)
 
         # 2. Start timer
@@ -50,18 +65,25 @@ class AnalyticsMiddleware(BaseHTTPMiddleware):
                     except Exception:
                         pass # Ignore invalid tokens in middleware
 
+                # Get client IP address accurately
+                ip_address = request.headers.get("x-forwarded-for")
+                if ip_address:
+                    ip_address = ip_address.split(",")[0]
+                else:
+                    ip_address = request.client.host if request.client else "unknown"
+
                 # Log as a 'visit' action with duration
                 await SystemLogService.log_visit(
                     db=db,
                     path=path,
                     method=request.method,
-                    ip_address=request.client.host if request.client else "unknown",
+                    ip_address=ip_address,
                     user_agent=request.headers.get("user-agent"),
                     user_id=user_id,
                     duration_ms=round(process_time, 2)
                 )
         except Exception as e:
             # We don't want analytics to break the main application flow
-            logger.debug(f"Analytics logging failed: {str(e)}")
+            logger.error(f"Analytics logging failed: {str(e)}")
 
         return response
