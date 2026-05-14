@@ -73,7 +73,7 @@ class CVTemplateService:
 
     @staticmethod
     @require_permission(["cv_template.update"])
-    async def update_template_design(template_id: str, data, db: AsyncSession):
+    async def update_template_design(user_perms: list[str], template_id: str, data, db: AsyncSession):
         """
         Cập nhật riêng phần thiết kế (Kéo thả từ Canvas) và ảnh Thumbnail
         """
@@ -84,13 +84,37 @@ class CVTemplateService:
             if not template:
                 raise HTTPException(status_code=404, detail="Template not found")
             
-            # Cập nhật các trường liên quan đến thiết kế
-            if hasattr(data, 'design_data'):
-                template.design_data = data.design_data
-            if hasattr(data, 'thumbnail'):
-                template.thumbnail = data.thumbnail
-            if hasattr(data, 'primary_color'):
-                template.primary_color = data.primary_color
+            # Hỗ trợ cả dict (khi debug) và object (Pydantic)
+            def get_val(obj, key):
+                if isinstance(obj, dict):
+                    return obj.get(key)
+                return getattr(obj, key, None)
+
+            name = get_val(data, 'name')
+            category = get_val(data, 'category')
+            is_active = get_val(data, 'is_active')
+            default_title = get_val(data, 'default_title')
+            default_subtitle = get_val(data, 'default_subtitle')
+            primary_color = get_val(data, 'primary_color')
+            default_sections = get_val(data, 'default_sections')
+            design_data = get_val(data, 'design_data')
+
+            if name is not None:
+                template.name = name
+            if category is not None:
+                template.category = category
+            if is_active is not None:
+                template.is_active = is_active
+            if default_title is not None:
+                template.default_title = default_title
+            if default_subtitle is not None:
+                template.default_subtitle = default_subtitle
+            if primary_color is not None:
+                template.primary_color = primary_color
+            if default_sections is not None:
+                template.default_sections = default_sections
+            if design_data is not None:
+                template.design_data = design_data
                 
             await db.commit()
             return {"status": "success", "message": "Design updated successfully"}
@@ -100,7 +124,7 @@ class CVTemplateService:
 
     @staticmethod
     @require_permission(["cv_template.create"])
-    async def clone_template(template_id: str, db: AsyncSession):
+    async def clone_template(user_perms: list[str], template_id: str, db: AsyncSession):
         """
         Nhân bản một mẫu CV có sẵn
         """
@@ -115,7 +139,6 @@ class CVTemplateService:
             cloned_template = CVTemplate(
                 name=f"{original.name} (Copy)",
                 category=original.category,
-                thumbnail=original.thumbnail,
                 default_title=original.default_title,
                 default_subtitle=original.default_subtitle,
                 primary_color=original.primary_color,
@@ -133,7 +156,7 @@ class CVTemplateService:
 
     @staticmethod
     @require_permission(["cv_template.delete"])
-    async def delete_template(template_id: str, db: AsyncSession):
+    async def delete_template(user_perms: list[str], template_id: str, db: AsyncSession):
         """
         Xóa template
         """

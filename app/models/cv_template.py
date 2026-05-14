@@ -21,18 +21,18 @@ class CVTemplate(BaseModel):
 # Schema dùng cho việc tạo/cập nhật Template từ Admin
 class CVTemplateSave(BM):
     id: Optional[str] = None
-    name: str
-    category: Optional[str] = "General"
+    name: Optional[str] = None
+    category: Optional[str] = "Chung"
     is_active: Optional[bool] = True
     
     # Nội dung mặc định
     default_title: Optional[str] = "Họ và Tên"
     default_subtitle: Optional[str] = "Vị trí ứng tuyển"
     primary_color: Optional[str] = "#1d7057ff"
-    default_sections: str # JSON string của mảng Section
+    default_sections: Optional[str] = None # JSON string của mảng Section
     
     # Cấu trúc layout kéo thả
-    design_data: str
+    design_data: Optional[str] = None
 
 # Schema dùng cho Filter/Search ở trang quản lý
 class CVTemplateFilter(BM):

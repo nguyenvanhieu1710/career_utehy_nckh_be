@@ -180,6 +180,28 @@ async def get_all_jobs(user_perms: list[str], filters: JobFilterSchema, db: Asyn
     if filters.status:
         base_stmt = base_stmt.where(Job.status == filters.status)
 
+    # Handle sorting
+    sort_column = None
+    if filters.sortBy:
+        if filters.sortBy == "salary":
+            sort_column = Job.salary_max
+        elif filters.sortBy == "posted_at":
+            sort_column = Job.posted_at
+        elif filters.sortBy == "title":
+            sort_column = Job.title
+        elif filters.sortBy == "company":
+            sort_column = Company.name
+        elif filters.sortBy == "created_at":
+            sort_column = Job.created_at
+    
+    if sort_column is None:
+        sort_column = Job.created_at # Default sort
+
+    if filters.sortOrder == "asc":
+        base_stmt = base_stmt.order_by(sort_column.asc())
+    else:
+        base_stmt = base_stmt.order_by(sort_column.desc())
+
     page = filters.page if filters.page and filters.page > 0 else 1
     row = min(filters.row if filters.row and filters.row > 0 else 10, 100)
     offset = (page - 1) * row

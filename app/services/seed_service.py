@@ -4,8 +4,10 @@ Seed service for creating initial data
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from app.models.user import Users, UserRole, UserPerm
 from app.models.perm_groups import PermGroups, GroupPermission
+from app.models.cv_template import CVTemplate
 from app.core.database import SessionLocal
 from app.services.user_service import hash_password
 from app.core.status import EntityStatus
@@ -46,6 +48,7 @@ async def create_admin_user():
                     "job.create", "job.read", "job.update", "job.delete",
                     "company.create", "company.read", "company.update", "company.delete",
                     "category.create", "category.read", "category.update", "category.delete",
+                    "cv_template.create", "cv_template.read", "cv_template.update", "cv_template.delete"
                 ]
                 
                 for perm in permissions:
@@ -88,7 +91,6 @@ async def create_admin_user():
             db.add(user_perm)
             
             await db.commit()
-
             
             return admin_user
             
@@ -97,11 +99,49 @@ async def create_admin_user():
             raise e
 
 
+async def seed_cv_templates():
+    """Create a default CV template if none exist"""
+    async with SessionLocal() as db:
+        try:
+            result = await db.execute(select(func.count()).select_from(CVTemplate))
+            count = result.scalar()
+            
+            if count > 0:
+                return
+
+            # Basic default structure
+            default_sections = '[{"id":"sec-1","title":"Kinh nghiệm làm việc","content":"Mô tả kinh nghiệm của bạn..."},{"id":"sec-2","title":"Học vấn","content":"Mô tả quá trình học tập..."}]'
+            design_data = '{"layout":"standard","columns":1,"spacing":"normal"}'
+
+            default_template = CVTemplate(
+                id=uuid.uuid4(),
+                name="Mẫu CV Cơ bản",
+                category="Chung",
+                is_active=True,
+                default_title="Họ và Tên",
+                default_subtitle="Vị trí ứng tuyển",
+                primary_color="#1d7057ff",
+                default_sections=default_sections,
+                design_data=design_data
+            )
+            
+            db.add(default_template)
+            await db.commit()
+            print("Default CV template seeded successfully.")
+            
+        except Exception as e:
+            await db.rollback()
+            print(f"Error seeding CV templates: {e}")
+
+
 async def seed_initial_data():
     """Seed all initial data"""
     try:        
         # Create admin user
         await create_admin_user()
+        
+        # Seed default CV templates
+        await seed_cv_templates()
                 
     except Exception as e:
         raise e

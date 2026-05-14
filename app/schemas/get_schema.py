@@ -11,6 +11,8 @@ class GetSchema(BaseModel):
     row: Optional[int] = None
     role_id: Optional[str] = None
     status: Optional[str] = None
+    sortBy: Optional[str] = None
+    sortOrder: Optional[str] = "desc"  # "asc" or "desc"
 
 class GetBlogSchema(BaseModel):
     user_id: Optional[str] = None
@@ -19,3 +21,5 @@ class GetBlogSchema(BaseModel):
     searchKeyword: Optional[str] = None
     page: Optional[int] = None
     row: Optional[int] = None
+    sortBy: Optional[str] = None
+    sortOrder: Optional[str] = "desc"

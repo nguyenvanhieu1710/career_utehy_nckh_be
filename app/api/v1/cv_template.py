@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import SessionLocal
 from app.services.cv_template_service import CVTemplateService
 from app.schemas.get_schema import GetSchema 
-from app.models.cv_template import CVTemplateSave
+from app.models.cv_template import CVTemplateSave, CVTemplateFilter
 from app.utils import auth
-from typing import List
+from typing import List, Any
 
 from app.services import user_service
 
@@ -17,7 +17,7 @@ async def get_db():
 
 @router.post("/get-all")
 async def get_templates(
-    filters: GetSchema, 
+    filters: CVTemplateFilter, 
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -57,7 +57,7 @@ async def create_template(
 @router.put("/update-design/{template_id}")
 async def update_template_design(
     template_id: str, 
-    data: CVTemplateSave, 
+    data: Any = Body(...), 
     perms: List[str] = Depends(auth.get_current_user_permissions),
     db: AsyncSession = Depends(get_db)
 ):
@@ -65,7 +65,7 @@ async def update_template_design(
     Cập nhật thiết kế từ trang Canvas kéo thả
     """
     # Lưu ý: CVTemplateSave nên có optional các trường design_data và thumbnail
-    return await CVTemplateService.update_template_design(template_id, data, db)
+    return await CVTemplateService.update_template_design(user_perms=perms, template_id=template_id, data=data, db=db)
 
 @router.post("/clone/{template_id}")
 async def clone_template(
@@ -76,7 +76,7 @@ async def clone_template(
     """
     Nhân bản mẫu CV
     """
-    return await CVTemplateService.clone_template(template_id, db)
+    return await CVTemplateService.clone_template(user_perms=perms, template_id=template_id, db=db)
 
 @router.delete("/delete/{template_id}")
 async def delete_template(
@@ -87,4 +87,4 @@ async def delete_template(
     """
     Xóa mẫu CV
     """
-    return await CVTemplateService.delete_template(template_id, db)
+    return await CVTemplateService.delete_template(user_perms=perms, template_id=template_id, db=db)

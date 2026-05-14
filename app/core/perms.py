@@ -12,6 +12,7 @@ class PermissionGroup(str, Enum):
     CV_PROFILE = "cv_profile"
     DATA_SOURCE = "data_source"
     JOB_FAVORITE = "job_favorite"
+    CV_TEMPLATE = "cv_template"
 
 PERMISSION_DEFINITIONS: dict[str, dict] = {
     # --- User ---
@@ -78,6 +79,13 @@ PERMISSION_DEFINITIONS: dict[str, dict] = {
     # --- Job Favorite ---
     # "job_favorite.read":   {"group": PermissionGroup.JOB_FAVORITE, "label": "Xem việc làm yêu thích"},
     # "job_favorite.list":   {"group": PermissionGroup.JOB_FAVORITE, "label": "Danh sách việc làm yêu thích"},
+
+    # --- CV Template ---
+    "cv_template.create": {"group": PermissionGroup.CV_TEMPLATE, "label": "Tạo mẫu CV"},
+    "cv_template.read":   {"group": PermissionGroup.CV_TEMPLATE, "label": "Xem mẫu CV"},
+    "cv_template.update": {"group": PermissionGroup.CV_TEMPLATE, "label": "Cập nhật mẫu CV"},
+    "cv_template.delete": {"group": PermissionGroup.CV_TEMPLATE, "label": "Xóa mẫu CV"},
+    "cv_template.list":   {"group": PermissionGroup.CV_TEMPLATE, "label": "Danh sách mẫu CV"},
 }
 
 def require_permission(perms: Union[List[str], str]):
