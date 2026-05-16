@@ -92,38 +92,44 @@ class MatchingProxyService:
                 return {"success": False, "message": str(e)}
 
     @staticmethod
-    async def get_auto_recommendations(user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None):
+    async def get_auto_recommendations(user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None, source: Optional[str] = None):
         """
-        Automatically detect the best CV to use for recommendations
-        Scenario 4: Priority logic
+        Automatically detect or use requested CV source for recommendations
+        source: 'profile', 'file', or 'auto'
         """
-        # 1. Try Online CV (Profile) first
         from app.models.cv_profile import CVProfile
-        profile_result = await db.execute(
-            select(CVProfile).where(CVProfile.user_id == user_id).order_by(CVProfile.updated_at.desc())
-        )
-        cv_profile_item = profile_result.scalar_one_or_none()
-        
-        if cv_profile_item:
-            logger.info(f"Auto-matching using Profile CV for user {user_id}")
-            resp = await MatchingProxyService.get_recommendations(str(cv_profile_item.id), user_id, db, top_k, job_ids)
-            if isinstance(resp, dict) and resp.get("mode") != "none":
-                resp["mode"] = "profile"
-            return resp
-
-        # 2. Try Uploaded PDF if no Profile
         from app.models.cv_uploaded import CVUploaded
-        uploaded_result = await db.execute(
-            select(CVUploaded).where(CVUploaded.user_id == user_id).order_by(CVUploaded.updated_at.desc())
-        )
-        cv_uploaded_item = uploaded_result.scalar_one_or_none()
-        
-        if cv_uploaded_item:
-            logger.info(f"Auto-matching using Uploaded PDF for user {user_id}")
-            resp = await MatchingProxyService.get_recommendations_from_file(str(cv_uploaded_item.id), user_id, db, top_k)
-            if isinstance(resp, dict) and resp.get("mode") != "none":
-                resp["mode"] = "file"
-            return resp
+
+        # 1. Try Online CV (Profile)
+        if source in [None, "auto", "profile"]:
+            profile_result = await db.execute(
+                select(CVProfile).where(CVProfile.user_id == user_id).order_by(CVProfile.updated_at.desc())
+            )
+            cv_profile_item = profile_result.scalar_one_or_none()
+            
+            if cv_profile_item:
+                logger.info(f"Matching using Profile CV for user {user_id}")
+                resp = await MatchingProxyService.get_recommendations(str(cv_profile_item.id), user_id, db, top_k, job_ids)
+                if isinstance(resp, dict) and resp.get("mode") != "none":
+                    resp["mode"] = "profile"
+                return resp
+            
+            if source == "profile":
+                return {"success": True, "matches": [], "mode": "none", "message": "No profile CV found"}
+
+        # 2. Try Uploaded PDF
+        if source in [None, "auto", "file"]:
+            uploaded_result = await db.execute(
+                select(CVUploaded).where(CVUploaded.user_id == user_id).order_by(CVUploaded.updated_at.desc())
+            )
+            cv_uploaded_item = uploaded_result.scalar_one_or_none()
+            
+            if cv_uploaded_item:
+                logger.info(f"Matching using Uploaded PDF for user {user_id}")
+                resp = await MatchingProxyService.get_recommendations_from_file(str(cv_uploaded_item.id), user_id, db, top_k)
+                if isinstance(resp, dict) and resp.get("mode") != "none":
+                    resp["mode"] = "file"
+                return resp
 
         # 3. Scenario 1: No CV at all
         logger.info(f"No CV found for user {user_id}, returning empty list (FE should handle fallback)")

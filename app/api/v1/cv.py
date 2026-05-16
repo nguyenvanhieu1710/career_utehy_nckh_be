@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import APIRouter, UploadFile, Response, Query, Depends, HTTPException, Form, status
 from app.services import cv_service, matching_proxy_service
@@ -91,14 +92,16 @@ async def get_recommendations_from_file(
 @router.get("/recommendations-auto")
 async def get_recommendations_auto(
         top_k: int = Query(10, ge=1, le=50),
+        source: Optional[str] = Query(None, description="Source of CV: 'profile', 'file', or 'auto'"),
         db: AsyncSession = Depends(get_db),
         user_id: str = Depends(auth.verify_token_user)
     ):
     """
-    Automatically detect and use the best CV source (Scenario 1 & 4)
+    Automatically detect or use specific CV source for recommendations
     """
     return await matching_proxy_service.MatchingProxyService.get_auto_recommendations(
         user_id=user_id,
         db=db,
-        top_k=top_k
+        top_k=top_k,
+        source=source
     )
