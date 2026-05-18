@@ -86,12 +86,29 @@ async def get_all_companies(user_perms: list[str], filters: get_schema.GetSchema
 
     max_page = math.ceil(total / row) if row > 0 else 1
 
+    # Count actual active jobs for each company
+    from app.models.job import Job
+    serialized_data = []
+    for company in data:
+        jobs_count_result = await db.execute(
+            select(func.count(Job.id))
+            .where(
+                (Job.company_id == company.id) & 
+                ((Job.action_status != "deleted") | (Job.action_status.is_(None)))
+            )
+        )
+        jobs_count = jobs_count_result.scalar()
+        
+        comp_dict = company.to_dict()
+        comp_dict["jobs_count"] = jobs_count
+        serialized_data.append(comp_dict)
+
     return {
         "total": total,
         "page": page,
         "max_page": max_page,
         "row": row,
-        "data": data
+        "data": serialized_data
     }
 
 

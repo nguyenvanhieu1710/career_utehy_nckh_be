@@ -33,10 +33,10 @@ async def create_cv(
     new_item = cv_profile.CVProfile(
         name="New CV",
         user_id=user_id,
-        title=data.title,
-        subtitle=data.subtitle,
-        primary_color=data.primary_color,
-        sections=data.sections,
+        title=data.title if data.title is not None else (template.default_title if template else None),
+        subtitle=data.subtitle if data.subtitle is not None else (template.default_subtitle if template else None),
+        primary_color=data.primary_color if data.primary_color is not None else (template.primary_color if template else None),
+        sections=data.sections if data.sections is not None else (template.default_sections if template else None),
         design_data=template.design_data if template else None,
     )
 

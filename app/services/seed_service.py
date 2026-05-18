@@ -256,7 +256,7 @@ async def seed_cv_templates():
     "size": { "width": 200, "height": 200 }
   }
 ]"""
-            design_data = '{"layout":"standard","columns":1,"spacing":"normal"}'
+            design_data = '[{"id":"sidebar-bg","type":"rect","x":0,"y":0,"width":240,"height":1123,"fill":"#1d7057","zIndex":1}]'
 
             default_template = CVTemplate(
                 id=uuid.uuid4(),
