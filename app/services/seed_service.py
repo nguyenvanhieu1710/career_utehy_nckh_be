@@ -109,8 +109,153 @@ async def seed_cv_templates():
             if count > 0:
                 return
 
-            # Basic default structure
-            default_sections = '[{"id":"sec-1","title":"Kinh nghiệm làm việc","content":"Mô tả kinh nghiệm của bạn..."},{"id":"sec-2","title":"Học vấn","content":"Mô tả quá trình học tập..."}]'
+            # Basic default structure conforming to frontend Canvas expectations
+            default_sections = """[
+  {
+    "id": "about",
+    "title": "Giới thiệu",
+    "open": true,
+    "items": [
+      {
+        "text": "Viết vài dòng mô tả ngắn gọn về bản thân.",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 270,
+    "y": 140,
+    "size": { "width": 500, "height": 170 }
+  },
+  {
+    "id": "contact",
+    "title": "Thông tin liên hệ",
+    "open": true,
+    "items": [
+      {
+        "text": "email@example.com",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      },
+      {
+        "text": "0123 456 789",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      },
+      {
+        "text": "Thành phố, Quốc gia",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 20,
+    "y": 310,
+    "size": { "width": 200, "height": 200 }
+  },
+  {
+    "id": "experience",
+    "title": "Kinh nghiệm làm việc",
+    "open": true,
+    "items": [
+      {
+        "text": "Vị trí, tên công ty, thời gian làm việc.",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 270,
+    "y": 310,
+    "size": { "width": 500, "height": 400 }
+  },
+  {
+    "id": "education",
+    "title": "Học vấn",
+    "open": true,
+    "items": [
+      {
+        "text": "Tên trường, chuyên ngành, năm tốt nghiệp.",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 270,
+    "y": 710,
+    "size": { "width": 500, "height": 550 }
+  },
+  {
+    "id": "language",
+    "title": "Ngôn ngữ",
+    "open": true,
+    "items": [
+      {
+        "text": "Tiếng Anh – Trung cấp",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      },
+      {
+        "text": "Tiếng Việt – Bản ngữ",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 20,
+    "y": 510,
+    "size": { "width": 200, "height": 200 }
+  },
+  {
+    "id": "skills",
+    "title": "Kỹ năng",
+    "open": true,
+    "items": [
+      {
+        "text": "JavaScript, React, giao tiếp, làm việc nhóm",
+        "editing": false,
+        "tempText": "",
+        "style": { "bold": false, "italic": false, "underline": false, "color": "#000000" },
+        "children": [],
+        "expanded": true
+      }
+    ],
+    "adding": false,
+    "editingIndex": null,
+    "x": 20,
+    "y": 710,
+    "size": { "width": 200, "height": 200 }
+  }
+]"""
             design_data = '{"layout":"standard","columns":1,"spacing":"normal"}'
 
             default_template = CVTemplate(
