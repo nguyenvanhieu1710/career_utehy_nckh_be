@@ -18,7 +18,7 @@ class NotificationService:
         """
         Gửi thông báo cho các người dùng phù hợp với danh sách job mới.
         Quy trình: 
-        1. Sync các job này sang Milvus (thông qua Matching Service)
+        1. (Đã được xử lý ở SyncOrchestrator) Đồng bộ AI Models.
         2. Tìm các user có CV.
         3. Với mỗi user, lấy top recommendations và check xem có job mới nào trong đó không.
         4. Gửi mail nếu tìm thấy job phù hợp.
@@ -28,15 +28,6 @@ class NotificationService:
 
         logger.info(f"🔔 [Notification] Bắt đầu xử lý thông báo cho {len(job_ids)} jobs mới.")
 
-        # Bước 1: Sync embeddings cho các job mới (Trigger Matching Service - Incremental)
-        try:
-            # Gọi API đồng bộ từng phần thay vì precompute toàn bộ
-            payload = {"job_ids": job_ids}
-            await MatchingProxyService._call_matching_api("/api/v1/admin/sync-jobs", json_data=payload, method="POST")
-            logger.info(f"✅ [Notification] Đã đồng bộ embeddings cho {len(job_ids)} jobs mới.")
-        except Exception as e:
-            logger.error(f"❌ [Notification] Lỗi khi sync embeddings: {e}")
-            # Vẫn tiếp tục vì có thể job cũ vẫn khớp
 
         async with SessionLocal() as db:
             # Bước 2: Tìm tất cả người dùng active có ít nhất 1 CV (Online hoặc Uploaded)

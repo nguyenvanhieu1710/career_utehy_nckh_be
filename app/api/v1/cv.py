@@ -55,6 +55,24 @@ async def cv_delete(
     result = await cv_service.delete_cv(cv_id=cv_id, user_id=user_id, db=db)
     return result
 
+@router.put("/{cv_id}/set-primary")
+async def cv_set_primary(
+        cv_id: str,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """Set a CV Online as the primary CV for matching"""
+    return await cv_service.set_primary_cv(cv_id=cv_id, user_id=user_id, cv_type="profile", db=db)
+
+@router.put("/{cv_id}/unset-primary")
+async def cv_unset_primary(
+        cv_id: str,
+        db: AsyncSession = Depends(get_db),
+        user_id: str = Depends(auth.verify_token_user)
+    ):
+    """Unset a CV Online as the primary CV"""
+    return await cv_service.unset_primary_cv(cv_id=cv_id, user_id=user_id, cv_type="profile", db=db)
+
 @router.get("/recommendations/{cv_id}")
 async def get_recommendations(
         cv_id: str,

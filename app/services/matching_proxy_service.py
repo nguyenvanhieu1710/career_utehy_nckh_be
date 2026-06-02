@@ -94,13 +94,39 @@ class MatchingProxyService:
     @staticmethod
     async def get_auto_recommendations(user_id: str, db: AsyncSession, top_k: int = 10, job_ids: List[str] = None, source: Optional[str] = None):
         """
-        Automatically detect or use requested CV source for recommendations
+        Automatically detect or use requested CV source for recommendations.
+        Priority: is_primary=True first, then fallback to most recently updated.
         source: 'profile', 'file', or 'auto'
         """
         from app.models.cv_profile import CVProfile
         from app.models.cv_uploaded import CVUploaded
 
-        # 1. Try Online CV (Profile)
+        # === Step 1: Check for a PRIMARY CV across both tables ===
+        if source in [None, "auto", "profile"]:
+            primary_profile_result = await db.execute(
+                select(CVProfile).where(CVProfile.user_id == user_id, CVProfile.is_primary == True)
+            )
+            primary_profile = primary_profile_result.scalar_one_or_none()
+            if primary_profile:
+                logger.info(f"Matching using PRIMARY Profile CV for user {user_id}")
+                resp = await MatchingProxyService.get_recommendations(str(primary_profile.id), user_id, db, top_k, job_ids)
+                if isinstance(resp, dict) and resp.get("mode") != "none":
+                    resp["mode"] = "profile"
+                return resp
+
+        if source in [None, "auto", "file"]:
+            primary_uploaded_result = await db.execute(
+                select(CVUploaded).where(CVUploaded.user_id == user_id, CVUploaded.is_primary == True)
+            )
+            primary_uploaded = primary_uploaded_result.scalar_one_or_none()
+            if primary_uploaded:
+                logger.info(f"Matching using PRIMARY Uploaded PDF for user {user_id}")
+                resp = await MatchingProxyService.get_recommendations_from_file(str(primary_uploaded.id), user_id, db, top_k)
+                if isinstance(resp, dict) and resp.get("mode") != "none":
+                    resp["mode"] = "file"
+                return resp
+
+        # === Step 2: Fallback - no primary set, use most recently updated ===
         if source in [None, "auto", "profile"]:
             profile_result = await db.execute(
                 select(CVProfile).where(CVProfile.user_id == user_id).order_by(CVProfile.updated_at.desc())
@@ -108,7 +134,7 @@ class MatchingProxyService:
             cv_profile_item = profile_result.scalar_one_or_none()
             
             if cv_profile_item:
-                logger.info(f"Matching using Profile CV for user {user_id}")
+                logger.info(f"Matching using latest Profile CV (no primary set) for user {user_id}")
                 resp = await MatchingProxyService.get_recommendations(str(cv_profile_item.id), user_id, db, top_k, job_ids)
                 if isinstance(resp, dict) and resp.get("mode") != "none":
                     resp["mode"] = "profile"
@@ -117,7 +143,6 @@ class MatchingProxyService:
             if source == "profile":
                 return {"success": True, "matches": [], "mode": "none", "message": "No profile CV found"}
 
-        # 2. Try Uploaded PDF
         if source in [None, "auto", "file"]:
             uploaded_result = await db.execute(
                 select(CVUploaded).where(CVUploaded.user_id == user_id).order_by(CVUploaded.updated_at.desc())
@@ -125,13 +150,13 @@ class MatchingProxyService:
             cv_uploaded_item = uploaded_result.scalar_one_or_none()
             
             if cv_uploaded_item:
-                logger.info(f"Matching using Uploaded PDF for user {user_id}")
+                logger.info(f"Matching using latest Uploaded PDF (no primary set) for user {user_id}")
                 resp = await MatchingProxyService.get_recommendations_from_file(str(cv_uploaded_item.id), user_id, db, top_k)
                 if isinstance(resp, dict) and resp.get("mode") != "none":
                     resp["mode"] = "file"
                 return resp
 
-        # 3. Scenario 1: No CV at all
+        # === Step 3: No CV at all ===
         logger.info(f"No CV found for user {user_id}, returning empty list (FE should handle fallback)")
         return {
             "success": True, 

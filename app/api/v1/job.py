@@ -4,6 +4,7 @@ from app.core.database import SessionLocal
 from app.services import job_service, user_service, company_service, import_job_service
 from app.services.job_service import JobCreate, JobUpdate
 from app.services.notification_service import NotificationService
+from app.services.sync_orchestrator_service import SyncOrchestratorService
 from app.services.crawl_history_service import CrawlHistoryService
 from app.schemas import get_schema
 from app.utils import auth
@@ -71,10 +72,10 @@ async def crawl_callback(
             except Exception as e:
                 logger.error(f"❌ Failed to update crawl history in callback: {e}")
 
-    # 2. Trigger notification in background
+    # 2. Trigger sync orchestrator (sync to AI + notifications) in background
     if data.newJobIds:
         background_tasks.add_task(
-            NotificationService.notify_suitable_users_on_new_jobs,
+            SyncOrchestratorService.handle_new_crawled_jobs,
             data.newJobIds
         )
     

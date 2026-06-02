@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, JSON, ForeignKey
+from sqlalchemy import Column, String, Text, JSON, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .base_model import BaseModel
 from pydantic import BaseModel as BM
@@ -16,6 +16,7 @@ class CVProfile(BaseModel):
     primary_color = Column(String(20), nullable=True)
     sections = Column(Text, nullable=False)
     design_data = Column(Text, nullable=False)
+    is_primary = Column(Boolean, default=False)
     
     # Relationships
     user = relationship('Users', back_populates='cv_profiles')

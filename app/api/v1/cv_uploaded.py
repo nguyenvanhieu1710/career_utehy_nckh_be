@@ -60,3 +60,23 @@ async def delete_uploaded_cv(
         db=db
     )
     return result
+
+@router.put("/{cv_id}/set-primary")
+async def set_uploaded_cv_primary(
+    cv_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """Set an uploaded PDF CV as the primary CV for matching"""
+    from app.services import cv_service
+    return await cv_service.set_primary_cv(cv_id=cv_id, user_id=user_id, cv_type="uploaded", db=db)
+
+@router.put("/{cv_id}/unset-primary")
+async def unset_uploaded_cv_primary(
+    cv_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(auth.verify_token_user)
+):
+    """Unset an uploaded PDF CV as the primary CV"""
+    from app.services import cv_service
+    return await cv_service.unset_primary_cv(cv_id=cv_id, user_id=user_id, cv_type="uploaded", db=db)

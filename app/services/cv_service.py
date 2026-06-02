@@ -124,4 +124,79 @@ async def delete_cv(cv_id: str, user_id: str, db: AsyncSession):
 
     await db.delete(cv)
     await db.commit()
-    return {"status": "success", "message": "CV deleted successfully"}
+    return {"status": "success", "message": "CV deleted successfully"}
+
+async def set_primary_cv(cv_id: str, user_id: str, cv_type: str, db: AsyncSession):
+    """
+    Set a CV as primary. Clears is_primary on ALL user CVs (both tables), then marks the chosen one.
+    cv_type: 'profile' or 'uploaded'
+    """
+    from app.models.cv_uploaded import CVUploaded
+    from sqlalchemy import update
+
+    # 1. Clear all is_primary for this user on the relevant table
+    if cv_type == "profile":
+        await db.execute(
+            update(cv_profile.CVProfile)
+            .where(cv_profile.CVProfile.user_id == user_id)
+            .values(is_primary=False)
+        )
+    elif cv_type == "uploaded":
+        await db.execute(
+            update(CVUploaded)
+            .where(CVUploaded.user_id == user_id)
+            .values(is_primary=False)
+        )
+
+    # 2. Set the chosen CV as primary
+    if cv_type == "profile":
+        result = await db.execute(
+            select(cv_profile.CVProfile)
+            .where(cv_profile.CVProfile.id == cv_id, cv_profile.CVProfile.user_id == user_id)
+        )
+        cv = result.scalar_one_or_none()
+        if not cv:
+            raise HTTPException(status_code=404, detail="CV not found")
+        cv.is_primary = True
+    elif cv_type == "uploaded":
+        result = await db.execute(
+            select(CVUploaded)
+            .where(CVUploaded.id == cv_id, CVUploaded.user_id == user_id)
+        )
+        cv = result.scalar_one_or_none()
+        if not cv:
+            raise HTTPException(status_code=404, detail="Uploaded CV not found")
+        cv.is_primary = True
+    else:
+        raise HTTPException(status_code=400, detail="Invalid cv_type, must be 'profile' or 'uploaded'")
+
+    await db.commit()
+    return {"status": "success", "message": "CV đã được đặt làm CV chính"}
+
+async def unset_primary_cv(cv_id: str, user_id: str, cv_type: str, db: AsyncSession):
+    """
+    Unset a CV as primary (toggle off).
+    """
+    from app.models.cv_uploaded import CVUploaded
+
+    if cv_type == "profile":
+        result = await db.execute(
+            select(cv_profile.CVProfile)
+            .where(cv_profile.CVProfile.id == cv_id, cv_profile.CVProfile.user_id == user_id)
+        )
+        cv = result.scalar_one_or_none()
+    elif cv_type == "uploaded":
+        result = await db.execute(
+            select(CVUploaded)
+            .where(CVUploaded.id == cv_id, CVUploaded.user_id == user_id)
+        )
+        cv = result.scalar_one_or_none()
+    else:
+        raise HTTPException(status_code=400, detail="Invalid cv_type")
+
+    if not cv:
+        raise HTTPException(status_code=404, detail="CV not found")
+
+    cv.is_primary = False
+    await db.commit()
+    return {"status": "success", "message": "Đã bỏ đánh dấu CV chính"}
